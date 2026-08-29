@@ -1,7 +1,7 @@
-defmodule LiveReact.EncoderTest do
+defmodule LiveViewReact.EncoderTest do
   use ExUnit.Case
 
-  alias LiveReact.Encoder
+  alias LiveViewReact.Encoder
 
   describe "primitive types" do
     test "encodes integers, floats, strings, booleans, nil, atoms" do
@@ -101,7 +101,7 @@ defmodule LiveReact.EncoderTest do
       struct = %NotDerivedUser{name: "John", age: 30, email: "j@x.com"}
 
       assert_raise Protocol.UndefinedError,
-                   ~r/LiveReact.Encoder protocol must always be explicitly implemented/,
+                   ~r/LiveViewReact.Encoder protocol must always be explicitly implemented/,
                    fn ->
                      Encoder.encode(struct, [])
                    end

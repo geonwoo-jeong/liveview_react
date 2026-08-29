@@ -1,6 +1,6 @@
-defprotocol LiveReact.Encoder do
+defprotocol LiveViewReact.Encoder do
   @moduledoc """
-  Protocol for encoding values to JSON for LiveReact.
+  Protocol for encoding values to JSON for LiveViewReact.
 
   This protocol is used to safely transform structs into plain maps before
   calculating JSON patches. It ensures that struct fields are explicitly
@@ -21,26 +21,26 @@ defprotocol LiveReact.Encoder do
   ## Example
 
       defmodule User do
-        @derive LiveReact.Encoder
+        @derive LiveViewReact.Encoder
         defstruct [:name, :email, :password]
       end
 
-  If we called `@derive {LiveReact.Encoder, only: [:name, :email]}`, only the
+  If we called `@derive {LiveViewReact.Encoder, only: [:name, :email]}`, only the
   specified fields would be encoded. If we called
-  `@derive {LiveReact.Encoder, except: [:password]}`, all fields except the
+  `@derive {LiveViewReact.Encoder, except: [:password]}`, all fields except the
   specified ones would be encoded.
 
   ## Deriving outside of the module
 
-      Protocol.derive(LiveReact.Encoder, User, only: [...])
+      Protocol.derive(LiveViewReact.Encoder, User, only: [...])
 
   ## Custom implementations
 
-      defimpl LiveReact.Encoder, for: User do
+      defimpl LiveViewReact.Encoder, for: User do
         def encode(struct, opts) do
           struct
           |> Map.take([:first, :second])
-          |> LiveReact.Encoder.encode(opts)
+          |> LiveViewReact.Encoder.encode(opts)
         end
       end
   """
@@ -56,52 +56,52 @@ defprotocol LiveReact.Encoder do
   def encode(value, opts)
 end
 
-defimpl LiveReact.Encoder, for: Integer do
+defimpl LiveViewReact.Encoder, for: Integer do
   def encode(value, _opts), do: value
 end
 
-defimpl LiveReact.Encoder, for: Float do
+defimpl LiveViewReact.Encoder, for: Float do
   def encode(value, _opts), do: value
 end
 
-defimpl LiveReact.Encoder, for: BitString do
+defimpl LiveViewReact.Encoder, for: BitString do
   def encode(value, _opts), do: value
 end
 
-defimpl LiveReact.Encoder, for: Atom do
+defimpl LiveViewReact.Encoder, for: Atom do
   def encode(atom, _opts), do: atom
 end
 
-defimpl LiveReact.Encoder, for: List do
+defimpl LiveViewReact.Encoder, for: List do
   def encode(list, opts) do
-    Enum.map(list, &LiveReact.Encoder.encode(&1, opts))
+    Enum.map(list, &LiveViewReact.Encoder.encode(&1, opts))
   end
 end
 
-defimpl LiveReact.Encoder, for: Map do
+defimpl LiveViewReact.Encoder, for: Map do
   def encode(map, opts) do
     Map.new(map, fn {key, value} ->
-      {key, LiveReact.Encoder.encode(value, opts)}
+      {key, LiveViewReact.Encoder.encode(value, opts)}
     end)
   end
 end
 
-defimpl LiveReact.Encoder, for: [Date, Time, NaiveDateTime, DateTime] do
+defimpl LiveViewReact.Encoder, for: [Date, Time, NaiveDateTime, DateTime] do
   def encode(value, _opts) do
     @for.to_iso8601(value)
   end
 end
 
-defimpl LiveReact.Encoder, for: Any do
+defimpl LiveViewReact.Encoder, for: Any do
   defmacro __deriving__(module, struct, opts) do
     fields = fields_to_encode(struct, opts)
 
     quote do
-      defimpl LiveReact.Encoder, for: unquote(module) do
+      defimpl LiveViewReact.Encoder, for: unquote(module) do
         def encode(struct, opts) do
           struct
           |> Map.take(unquote(fields))
-          |> LiveReact.Encoder.encode(opts)
+          |> LiveViewReact.Encoder.encode(opts)
         end
       end
     end
@@ -112,32 +112,32 @@ defimpl LiveReact.Encoder, for: Any do
       protocol: @protocol,
       value: struct,
       description: """
-      LiveReact.Encoder protocol must always be explicitly implemented.
+      LiveViewReact.Encoder protocol must always be explicitly implemented.
 
-      It's used to encode structs to JSON for LiveReact. It's very similar to Jason.Encoder,
-      but it's converting structs to maps so LiveReact can diff them correctly.
+      It's used to encode structs to JSON for LiveViewReact. It's very similar to Jason.Encoder,
+      but it's converting structs to maps so LiveViewReact can diff them correctly.
 
       If you own the struct, you can derive the implementation specifying \
       which fields should be encoded:
 
           defmodule #{inspect(module)} do
-            @derive {LiveReact.Encoder, only: [...]}
+            @derive {LiveViewReact.Encoder, only: [...]}
             defstruct ...
           end
 
       If you don't own the struct you want to encode, \
       you may use Protocol.derive/3 placed outside of any module:
 
-          Protocol.derive(LiveReact.Encoder, #{inspect(module)}, only: [...])
-          Protocol.derive(LiveReact.Encoder, #{inspect(module)})
+          Protocol.derive(LiveViewReact.Encoder, #{inspect(module)}, only: [...])
+          Protocol.derive(LiveViewReact.Encoder, #{inspect(module)})
 
       Nothing prevents you from defining your own implementation for the struct:
 
-      defimpl LiveReact.Encoder, for: #{inspect(module)} do
+      defimpl LiveViewReact.Encoder, for: #{inspect(module)} do
         def encode(struct, opts) do
           struct
           |> Map.take([:first, :second])
-          |> LiveReact.Encoder.encode(opts)
+          |> LiveViewReact.Encoder.encode(opts)
         end
       end
       """
@@ -177,9 +177,9 @@ defimpl LiveReact.Encoder, for: Any do
   end
 end
 
-defimpl LiveReact.Encoder, for: Phoenix.LiveView.AsyncResult do
+defimpl LiveViewReact.Encoder, for: Phoenix.LiveView.AsyncResult do
   def encode(%Phoenix.LiveView.AsyncResult{} = struct, opts) do
-    LiveReact.Encoder.encode(
+    LiveViewReact.Encoder.encode(
       %{
         ok: struct.ok?,
         loading: struct.loading,
@@ -195,21 +195,21 @@ defimpl LiveReact.Encoder, for: Phoenix.LiveView.AsyncResult do
   defp encode_failed(other), do: other
 end
 
-defimpl LiveReact.Encoder, for: Phoenix.LiveView.UploadConfig do
+defimpl LiveViewReact.Encoder, for: Phoenix.LiveView.UploadConfig do
   def encode(%Phoenix.LiveView.UploadConfig{} = struct, opts) do
     errors =
       Enum.map(struct.errors, fn {key, value} ->
-        %{ref: key, error: LiveReact.Encoder.encode(value, opts)}
+        %{ref: key, error: LiveViewReact.Encoder.encode(value, opts)}
       end)
 
     entries =
       Enum.map(struct.entries, fn entry ->
-        encoded = LiveReact.Encoder.encode(entry, opts)
+        encoded = LiveViewReact.Encoder.encode(entry, opts)
         entry_errors = errors |> Enum.filter(&(&1.ref == entry.ref)) |> Enum.map(& &1.error)
         Map.put(encoded, :errors, entry_errors)
       end)
 
-    LiveReact.Encoder.encode(
+    LiveViewReact.Encoder.encode(
       %{
         ref: struct.ref,
         name: struct.name,
@@ -224,9 +224,9 @@ defimpl LiveReact.Encoder, for: Phoenix.LiveView.UploadConfig do
   end
 end
 
-defimpl LiveReact.Encoder, for: Phoenix.LiveView.UploadEntry do
+defimpl LiveViewReact.Encoder, for: Phoenix.LiveView.UploadEntry do
   def encode(%Phoenix.LiveView.UploadEntry{} = struct, opts) do
-    LiveReact.Encoder.encode(
+    LiveViewReact.Encoder.encode(
       %{
         ref: struct.ref,
         client_name: struct.client_name,
@@ -242,9 +242,9 @@ defimpl LiveReact.Encoder, for: Phoenix.LiveView.UploadEntry do
   end
 end
 
-defimpl LiveReact.Encoder, for: Phoenix.HTML.Form do
+defimpl LiveViewReact.Encoder, for: Phoenix.HTML.Form do
   def encode(%Phoenix.HTML.Form{} = form, opts) do
-    LiveReact.Encoder.encode(
+    LiveViewReact.Encoder.encode(
       %{
         name: form.name,
         values: encode_form_values(form, opts),
@@ -320,7 +320,7 @@ defimpl LiveReact.Encoder, for: Phoenix.HTML.Form do
     defp data_field_values(value, _opts), do: value
 
     def encode_form_values(%{impl: Phoenix.HTML.FormData.Ecto.Changeset, source: source}, opts) do
-      source |> collect_changeset_values(opts) |> LiveReact.Encoder.encode(opts)
+      source |> collect_changeset_values(opts) |> LiveViewReact.Encoder.encode(opts)
     end
   end
 
@@ -331,7 +331,7 @@ defimpl LiveReact.Encoder, for: Phoenix.HTML.Form do
       |> Map.merge(form.data)
       |> Map.merge(Map.new(form.params))
 
-    LiveReact.Encoder.encode(base_values, opts)
+    LiveViewReact.Encoder.encode(base_values, opts)
   end
 
   if Code.ensure_loaded?(Ecto) do

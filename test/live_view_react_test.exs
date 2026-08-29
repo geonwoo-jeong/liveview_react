@@ -1,18 +1,25 @@
-defmodule LiveReactTest do
+defmodule LiveViewReactTest do
   use ExUnit.Case
 
-  import LiveReact
+  import LiveViewReact
   import Phoenix.Component
   import Phoenix.LiveViewTest
 
-  alias LiveReact.Test
+  alias LiveViewReact.Test
 
-  doctest LiveReact
+  doctest LiveViewReact
+
+  test "uses the canonical OTP application identity" do
+    removed_app = ["live", "react"] |> Enum.join("_") |> String.to_atom()
+
+    assert Application.spec(:liveview_react, :vsn) == ~c"0.1.0"
+    assert Application.spec(removed_app) == nil
+  end
 
   describe "basic component rendering" do
     def simple_component(assigns) do
       ~H"""
-      <.react name="MyComponent" firstName="john" lastName="doe" />
+      <.react id="my-component" component="MyComponent" firstName="john" lastName="doe" />
       """
     end
 
@@ -24,11 +31,57 @@ defmodule LiveReactTest do
       assert react.props == %{"firstName" => "john", "lastName" => "doe"}
     end
 
-    test "generates consistent ID" do
+    test "uses the required explicit ID" do
       html = render_component(&simple_component/1)
       react = Test.get_react(html)
 
-      assert react.id =~ ~r/MyComponent-\d+/
+      assert react.id == "my-component"
+    end
+
+    test "rejects a missing ID" do
+      assert_raise ArgumentError,
+                   "LiveViewReact.react/1 requires :id to be a non-empty string",
+                   fn ->
+                     LiveViewReact.react(%{
+                       component: "MyComponent",
+                       __changed__: nil
+                     })
+                   end
+    end
+
+    test "rejects a missing component selector" do
+      assert_raise ArgumentError,
+                   "LiveViewReact.react/1 requires :component to be a non-empty string",
+                   fn ->
+                     LiveViewReact.react(%{
+                       id: "my-component",
+                       __changed__: nil
+                     })
+                   end
+    end
+
+    test "rejects empty and non-string identity values" do
+      for {key, value} <- [id: "", id: :counter, component: "", component: Counter] do
+        assigns =
+          %{id: "my-component", component: "MyComponent", __changed__: nil}
+          |> Map.put(key, value)
+
+        assert_raise ArgumentError,
+                     "LiveViewReact.react/1 requires #{inspect(key)} to be a non-empty string",
+                     fn -> LiveViewReact.react(assigns) end
+      end
+    end
+
+    test "does not treat name as a component selector" do
+      assert_raise ArgumentError,
+                   "LiveViewReact.react/1 requires :component to be a non-empty string",
+                   fn ->
+                     LiveViewReact.react(%{
+                       id: "my-component",
+                       name: "MyComponent",
+                       __changed__: nil
+                     })
+                   end
     end
   end
 
@@ -36,8 +89,8 @@ defmodule LiveReactTest do
     def multi_component(assigns) do
       ~H"""
       <div>
-        <.react id="profile-1" firstName="John" name="UserProfile" />
-        <.react id="card-1" firstName="Jane" name="UserCard" />
+        <.react id="profile-1" firstName="John" component="UserProfile" />
+        <.react id="card-1" firstName="Jane" component="UserCard" />
       </div>
       """
     end
@@ -50,9 +103,9 @@ defmodule LiveReactTest do
       assert react.props == %{"firstName" => "John"}
     end
 
-    test "finds specific component by name" do
+    test "finds specific component by registry name" do
       html = render_component(&multi_component/1)
-      react = Test.get_react(html, name: "UserCard")
+      react = Test.get_react(html, component: "UserCard")
 
       assert react.component == "UserCard"
       assert react.props == %{"firstName" => "Jane"}
@@ -66,13 +119,13 @@ defmodule LiveReactTest do
       assert react.id == "card-1"
     end
 
-    test "raises error when component with name not found" do
+    test "raises error when component selector is not found" do
       html = render_component(&multi_component/1)
 
       assert_raise RuntimeError,
-                   ~r/No React component found with name="Unknown".*Available components: UserProfile#profile-1, UserCard#card-1/,
+                   ~r/No LiveViewReact component found with component="Unknown".*Available components: UserProfile#profile-1, UserCard#card-1/,
                    fn ->
-                     Test.get_react(html, name: "Unknown")
+                     Test.get_react(html, component: "Unknown")
                    end
     end
 
@@ -80,7 +133,7 @@ defmodule LiveReactTest do
       html = render_component(&multi_component/1)
 
       assert_raise RuntimeError,
-                   ~r/No React component found with id="unknown-id".*Available components: UserProfile#profile-1, UserCard#card-1/,
+                   ~r/No LiveViewReact component found with id="unknown-id".*Available components: UserProfile#profile-1, UserCard#card-1/,
                    fn ->
                      Test.get_react(html, id: "unknown-id")
                    end
@@ -90,7 +143,7 @@ defmodule LiveReactTest do
   describe "styling" do
     def styled_component(assigns) do
       ~H"""
-      <.react name="MyComponent" class="bg-blue-500 rounded-sm" />
+      <.react id="styled" component="MyComponent" class="bg-blue-500 rounded-sm" />
       """
     end
 
@@ -105,7 +158,7 @@ defmodule LiveReactTest do
   describe "SSR behavior" do
     def ssr_component(assigns) do
       ~H"""
-      <.react name="MyComponent" ssr={false} />
+      <.react id="without-ssr" component="MyComponent" ssr={false} />
       """
     end
 
@@ -120,7 +173,7 @@ defmodule LiveReactTest do
   describe "slots" do
     def component_with_named_slot(assigns) do
       ~H"""
-      <.react name="WithSlots">
+      <.react id="named-slot" component="WithSlots">
         <:hello>Simple content</:hello>
       </.react>
       """
@@ -128,7 +181,7 @@ defmodule LiveReactTest do
 
     def component_with_inner_block(assigns) do
       ~H"""
-      <.react name="WithSlots">
+      <.react id="default-slot" component="WithSlots">
         Simple content
       </.react>
       """
@@ -138,7 +191,7 @@ defmodule LiveReactTest do
       assigns = assign(assigns, :untrusted, ~S|<img src=x onerror="alert(1)">|)
 
       ~H"""
-      <.react name="WithSlots">
+      <.react id="untrusted-slot" component="WithSlots">
         {@untrusted}
       </.react>
       """
@@ -186,7 +239,7 @@ defmodule LiveReactTest do
       html =
         render_component(fn assigns ->
           ~H"""
-          <.react name="WithSlots" />
+          <.react id="empty-slot" component="WithSlots" />
           """
         end)
 

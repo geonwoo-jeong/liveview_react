@@ -1,7 +1,7 @@
-defmodule LiveReact.Encoder.LiveViewTest do
+defmodule LiveViewReact.Encoder.LiveViewTest do
   use ExUnit.Case
 
-  alias LiveReact.Encoder
+  alias LiveViewReact.Encoder
   alias Phoenix.LiveView.AsyncResult
   alias Phoenix.LiveView.UploadConfig
 

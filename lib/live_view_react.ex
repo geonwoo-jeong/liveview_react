@@ -1,49 +1,73 @@
-defmodule LiveReact do
+defmodule LiveViewReact do
   @moduledoc """
-  See READ.md for installation instructions and examples.
+  Phoenix function components for rendering React roots in LiveView.
+
+  Every root requires an explicit DOM `id` and registry `component` name:
+
+      <.react id="counter" component="Counter" socket={@socket} count={@count} />
   """
 
   use Phoenix.Component
   import Phoenix.HTML
 
-  alias LiveReact.Encoder
-  alias LiveReact.Patch
-  alias LiveReact.SSR
-  alias LiveReact.Slots
+  alias LiveViewReact.Encoder
+  alias LiveViewReact.Patch
+  alias LiveViewReact.Slots
+  alias LiveViewReact.SSR
   alias Phoenix.LiveView
   alias Phoenix.LiveView.LiveStream
 
-  @ssr_default Application.compile_env(:live_react, :ssr, true)
-  @diff_default Application.compile_env(:live_react, :enable_props_diff, true)
+  @ssr_default Application.compile_env(:liveview_react, :ssr, true)
+  @diff_default Application.compile_env(:liveview_react, :enable_props_diff, true)
+  @reserved_assigns ~w(id component class ssr diff socket __changed__ __given__)a
 
   @doc """
-  Render a React component.
+  Renders one explicitly identified React component root.
+
+  `:id` and `:component` must be non-empty strings. All remaining assigns,
+  except LiveView internals and rendering options, are transported as props.
   """
-  def react(assigns) do
+  @spec react(map()) :: Phoenix.LiveView.Rendered.t()
+  def react(assigns) when is_map(assigns) do
+    validate_required_assigns!(assigns)
+
     flags = render_flags(assigns)
     assigns = prepare_assigns(assigns, flags)
 
-    # It's important to not add extra `\n` in the inner div or it will break hydration
+    # Whitespace inside this element would become an SSR hydration text node.
     ~H"""
     <div
-      id={assigns[:id] || id(@__component_name)}
-      data-name={@__component_name}
-      data-props={"#{Patch.encode_object(Encoder.encode(@props, []))}"}
-      data-props-diff={"#{@props_diff}"}
-      data-streams-diff={"#{@streams_diff}"}
-      data-slots={"#{@slots |> Slots.base_encode_64 |> json}"}
+      id={@id}
+      data-component={@component}
+      data-props={Patch.encode_object(Encoder.encode(@props, []))}
+      data-props-diff={@props_diff}
+      data-streams-diff={@streams_diff}
+      data-slots={@slots |> Slots.base_encode_64() |> json()}
       data-ssr={is_map(@ssr_render)}
-      data-use-diff={@use_diff |> to_string()}
+      data-use-diff={to_string(@use_diff)}
       phx-update="ignore"
-      phx-hook="ReactHook"
+      phx-hook="LiveViewReactHook"
       class={@class}
-    ><%= raw(@ssr_render[:html]) %></div>
+    ><div data-react-target><%= raw(@ssr_render[:html]) %></div></div>
     """
+  end
+
+  defp validate_required_assigns!(assigns) do
+    Enum.each([:id, :component], fn key ->
+      case Map.fetch(assigns, key) do
+        {:ok, value} when is_binary(value) and value != "" ->
+          :ok
+
+        _ ->
+          raise ArgumentError,
+                "LiveViewReact.react/1 requires #{inspect(key)} to be a non-empty string"
+      end
+    end)
   end
 
   # Flags derived from the assigns that drive how the component is rendered.
   defp render_flags(assigns) do
-    init = assigns.__changed__ == nil
+    init = Map.get(assigns, :__changed__) == nil
     dead = assigns[:socket] == nil or not LiveView.connected?(assigns[:socket])
 
     %{
@@ -77,7 +101,6 @@ defmodule LiveReact do
 
     assigns
     |> Map.put_new(:class, nil)
-    |> Map.put(:__component_name, Map.get(assigns, :name))
     |> Map.put(:props, props)
     |> Map.put(:props_diff, Patch.serialize(props_diff))
     |> Map.put(:streams_diff, Patch.serialize(streams_diff))
@@ -207,9 +230,7 @@ defmodule LiveReact do
     end)
   end
 
-  defp normalize_key(key, _val)
-       when key in ~w(id class ssr diff name socket __changed__ __given__)a,
-       do: :special
+  defp normalize_key(key, _val) when key in @reserved_assigns, do: :special
 
   defp normalize_key(_key, [%{__slot__: _}]), do: :slots
   defp normalize_key(key, val) when is_atom(key), do: key |> to_string() |> normalize_key(val)
@@ -220,23 +241,14 @@ defmodule LiveReact do
   defp key_changed(%{__changed__: changed}, key), do: changed[key] != nil
 
   defp ssr_render(assigns) do
-    try do
-      name = Map.get(assigns, :name)
-
-      SSR.render(name, Encoder.encode(assigns.props, []), assigns.slots)
-    rescue
-      SSR.NotConfigured ->
-        nil
-    end
+    SSR.render(%{
+      component: assigns.component,
+      props: Encoder.encode(assigns.props, []),
+      slots: assigns.slots
+    })
+  rescue
+    SSR.NotConfigured -> nil
   end
 
   defp json(data), do: Jason.encode!(data, escape: :html_safe)
-
-  defp id(name) do
-    # a small trick to avoid collisions of IDs but keep them consistent across dead and live render
-    # id(name) is called only once during the whole LiveView lifecycle because it's not using any assigns
-    number = Process.get(:live_react_counter, 1)
-    Process.put(:live_react_counter, number + 1)
-    "#{name}-#{number}"
-  end
 end

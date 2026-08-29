@@ -1,12 +1,13 @@
-defmodule LiveReactPropsDiffTest do
+defmodule LiveViewReact.PropsDiffTest do
   use ExUnit.Case
 
   import Phoenix.Component
 
-  alias LiveReact.Test
+  alias LiveViewReact.Test
 
   defp render_react_assigns(assigns) do
-    rendered = LiveReact.react(assigns)
+    assigns = Map.merge(%{id: "props-test", component: "TestComponent"}, assigns)
+    rendered = LiveViewReact.react(assigns)
     html = rendered |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
     Test.get_react(html)
   end
@@ -99,11 +100,11 @@ defmodule LiveReactPropsDiffTest do
 
     defmodule User do
       @moduledoc false
-      @derive LiveReact.Encoder
+      @derive LiveViewReact.Encoder
       defstruct [:name, :age]
     end
 
-    test "for structs uses LiveReact.Encoder to convert to map" do
+    test "for structs uses LiveViewReact.Encoder to convert to map" do
       assigns = %{user: %User{name: "John", age: 30}, __changed__: %{}}
       assigns = assign(assigns, :user, %User{name: "Alice", age: 25})
 
@@ -115,7 +116,7 @@ defmodule LiveReactPropsDiffTest do
       ])
     end
 
-    test "struct props without LiveReact.Encoder raise a helpful error" do
+    test "struct props without LiveViewReact.Encoder raise a helpful error" do
       defmodule Undecoded do
         @moduledoc false
         defstruct [:name]
@@ -124,7 +125,7 @@ defmodule LiveReactPropsDiffTest do
       assigns = %{user: struct!(Undecoded, name: "John"), __changed__: nil}
 
       assert_raise Protocol.UndefinedError,
-                   ~r/LiveReact.Encoder protocol must always be explicitly implemented/,
+                   ~r/LiveViewReact.Encoder protocol must always be explicitly implemented/,
                    fn ->
                      render_react_assigns(assigns)
                    end

@@ -1,12 +1,13 @@
-defmodule LiveReactStreamsDiffTest do
+defmodule LiveViewReact.StreamsDiffTest do
   use ExUnit.Case
 
-  alias LiveReact.Test
+  alias LiveViewReact.Test
   alias Phoenix.LiveView.LiveStream
   alias Phoenix.LiveView.Socket
 
   defp render_react_assigns(assigns) do
-    rendered = LiveReact.react(assigns)
+    assigns = Map.merge(%{id: "streams-test", component: "TestComponent"}, assigns)
+    rendered = LiveViewReact.react(assigns)
     html = rendered |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
     Test.get_react(html)
   end
@@ -34,7 +35,7 @@ defmodule LiveReactStreamsDiffTest do
 
   defmodule StreamUser do
     @moduledoc false
-    @derive LiveReact.Encoder
+    @derive LiveViewReact.Encoder
     defstruct [:id, :name, :age]
   end
 

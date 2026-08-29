@@ -1,16 +1,16 @@
-defmodule LiveReactClassificationTest do
+defmodule LiveViewReact.ClassificationTest do
   use ExUnit.Case
 
-  import LiveReact
+  import LiveViewReact
   import Phoenix.Component
   import Phoenix.LiveViewTest
 
-  alias LiveReact.Test
+  alias LiveViewReact.Test
   alias Phoenix.LiveView.LiveStream
 
   def stream_component(assigns) do
     ~H"""
-    <.react name="TestComponent" users={@users} title={@title} />
+    <.react id="stream-component" component="TestComponent" users={@users} title={@title} />
     """
   end
 

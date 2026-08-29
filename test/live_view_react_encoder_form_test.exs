@@ -1,10 +1,10 @@
-defmodule LiveReact.EncoderFormTest do
+defmodule LiveViewReact.EncoderFormTest do
   use ExUnit.Case
 
   import Ecto.Changeset
   import Phoenix.Component, only: [to_form: 2]
 
-  alias LiveReact.Encoder
+  alias LiveViewReact.Encoder
   alias Phoenix.HTML.FormData
 
   defp encode_form(source, attrs) do
@@ -20,10 +20,10 @@ defmodule LiveReact.EncoderFormTest do
 
     import Ecto.Changeset
 
-    @derive {Encoder, except: [:secret]}
+    @derive {Encoder, except: [:private_note]}
     embedded_schema do
       field(:name, :string)
-      field(:secret, :string)
+      field(:private_note, :string)
       field(:age, :integer)
       field(:active, :boolean)
       field(:tags, {:array, :string})
@@ -32,7 +32,7 @@ defmodule LiveReact.EncoderFormTest do
 
     def changeset(simple, attrs) do
       simple
-      |> cast(attrs, [:name, :secret, :age, :active, :tags, :score])
+      |> cast(attrs, [:name, :private_note, :age, :active, :tags, :score])
       |> validate_required([:name])
       |> validate_number(:age, greater_than: 0)
       |> validate_number(:score, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
@@ -45,7 +45,7 @@ defmodule LiveReact.EncoderFormTest do
 
       attrs = %{
         name: "John",
-        secret: "hidden_value",
+        private_note: "not transported",
         age: 30,
         active: true,
         tags: ["elixir", "phoenix"],
