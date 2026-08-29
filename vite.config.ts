@@ -21,7 +21,12 @@ export default defineConfig({
     },
     minify: false,
     rollupOptions: {
-      external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/, /^vite(?:\/.*)?$/],
+      external: [
+        /^node:/,
+        /^react(?:\/.*)?$/,
+        /^react-dom(?:\/.*)?$/,
+        /^vite(?:\/.*)?$/,
+      ],
     },
     sourcemap: true,
     target: "es2024",
