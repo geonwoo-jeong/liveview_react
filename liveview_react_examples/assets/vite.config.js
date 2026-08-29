@@ -11,6 +11,11 @@ export default defineConfig(({ command, isSsrBuild }) => {
   const rootDir = import.meta.dirname;
 
   return {
+    define: {
+      __LIVEVIEW_REACT_E2E__: JSON.stringify(
+        process.env.LIVEVIEW_REACT_E2E === "true",
+      ),
+    },
     server: {
       port: 4011,
       host: "127.0.0.1",

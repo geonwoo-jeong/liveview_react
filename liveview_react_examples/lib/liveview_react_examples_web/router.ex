@@ -29,5 +29,10 @@ defmodule LiveViewReactExamplesWeb.Router do
     live "/link-demo", LiveLinkDemo
     live "/link-usage", LiveLinkUsage
     live "/stream-demo", LiveStreamDemo
+
+    if Application.compile_env(:liveview_react_examples, :e2e, false) do
+      live "/e2e/lifecycle", LiveLifecycleE2E
+      live "/e2e/lifecycle/destination", LiveLifecycleDestination
+    end
   end
 end
