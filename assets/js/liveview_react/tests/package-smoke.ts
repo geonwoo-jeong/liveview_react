@@ -147,6 +147,12 @@ try {
     if (typeof client.useLiveNavigation !== "function") {
       throw new Error("Root export is missing useLiveNavigation");
     }
+    if (typeof client.useLiveForm !== "function") {
+      throw new Error("Root export is missing useLiveForm");
+    }
+    if (typeof client.useLiveUpload !== "function") {
+      throw new Error("Root export is missing useLiveUpload");
+    }
     if (typeof client.Link !== "function") {
       throw new Error("Root export is missing Link");
     }
@@ -198,9 +204,13 @@ try {
         useEventReply,
         useLiveConnection,
         useLiveEvent,
+        useLiveForm,
         useLiveNavigation,
+        useLiveUpload,
         useLiveReact,
         type ComponentRegistry,
+        type LiveFormServerSnapshot,
+        type LiveUploadConfig,
       } from "liveview_react";
       import { createLiveViewReactServer } from "liveview_react/server";
       import liveViewReactPlugin from "liveview_react/vite";
@@ -220,9 +230,34 @@ try {
 
       function HookConsumer() {
         const bridge = useLiveReact();
+        const form = useLiveForm(
+          {
+            id: "profile-form",
+            name: "profile",
+            values: { email: "" },
+            errors: {},
+            required: { email: true },
+            valid: true,
+            revision: 0,
+          } satisfies LiveFormServerSnapshot<{ readonly email: string }>,
+          { changeEvent: "validate", submitEvent: "save" },
+        );
+        const upload = useLiveUpload({
+          accept: "any",
+          auto_upload: false,
+          entries: [],
+          errors: [],
+          max_entries: 1,
+          max_entries_mode: "selected",
+          max_file_size: 8_000_000,
+          name: "avatar",
+          ref: "avatar-ref",
+        } satisfies LiveUploadConfig);
         const reply: Promise<{ readonly ok: boolean }> =
           bridge.pushEvent<{ readonly ok: boolean }>("save", { count: 1 });
         void reply;
+        void form;
+        void upload;
         useLiveEvent<{ readonly count: number }>("count", ({ count }) => count);
         useEventReply<{ readonly ok: boolean }>("save");
         useLiveConnection();
@@ -237,7 +272,9 @@ try {
       void useEventReply;
       void useLiveConnection;
       void useLiveEvent;
+      void useLiveForm;
       void useLiveNavigation;
+      void useLiveUpload;
       void useLiveReact;
     `,
   );
