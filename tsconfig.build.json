@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "outDir": "./dist",
+    "rootDir": "./assets/js/liveview_react",
+    "stripInternal": true,
+    "types": ["node"]
+  },
+  "include": [
+    "assets/js/liveview_react/**/*.ts",
+    "assets/js/liveview_react/**/*.tsx"
+  ],
+  "exclude": [
+    "assets/js/liveview_react/**/*.test.ts",
+    "assets/js/liveview_react/**/*.test.tsx",
+    "assets/js/liveview_react/tests",
+    "dist",
+    "node_modules"
+  ]
+}

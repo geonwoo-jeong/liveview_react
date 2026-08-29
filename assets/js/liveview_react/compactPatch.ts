@@ -1,11 +1,30 @@
-export const decodeCompactPatch = (payload) => {
+export type PatchOperationName =
+  "add" | "remove" | "replace" | "upsert" | "limit";
+
+export interface PatchOperation {
+  readonly op: PatchOperationName;
+  readonly path: string;
+  readonly value?: unknown;
+}
+
+interface LengthResult {
+  readonly value: number;
+  readonly offset: number;
+}
+
+export const decodeCompactPatch = (
+  payload: string | null,
+): PatchOperation[] => {
   if (!payload) return [];
 
   const operations = [];
   let offset = 0;
 
   while (offset < payload.length) {
-    const code = payload[offset++];
+    const code = payload[offset++]!;
+    if (code === undefined) {
+      throw new Error("Unexpected end of LiveViewReact patch payload");
+    }
 
     if (code === "n") {
       offset = skipDigits(payload, offset);
@@ -49,14 +68,14 @@ export const decodeCompactPatch = (payload) => {
     } else if (tag === "J") {
       operations.push({ op, path, value: decodeCompactJson(rawValue) });
     } else {
-      throw new Error(`Unknown LiveReact patch value tag: ${tag}`);
+      throw new Error(`Unknown LiveViewReact patch value tag: ${tag}`);
     }
   }
 
   return operations;
 };
 
-const opFromCode = (code) => {
+const opFromCode = (code: string): PatchOperationName => {
   switch (code) {
     case "a":
       return "add";
@@ -69,11 +88,11 @@ const opFromCode = (code) => {
     case "l":
       return "limit";
     default:
-      throw new Error(`Unknown LiveReact patch operation code: ${code}`);
+      throw new Error(`Unknown LiveViewReact patch operation code: ${code}`);
   }
 };
 
-const readLength = (payload, offset) => {
+const readLength = (payload: string, offset: number): LengthResult => {
   let value = 0;
   let hasDigits = false;
 
@@ -85,11 +104,13 @@ const readLength = (payload, offset) => {
     hasDigits = true;
   }
 
-  if (!hasDigits || payload[offset] !== ":") throw new Error("Invalid LiveReact patch length prefix");
+  if (!hasDigits || payload[offset] !== ":") {
+    throw new Error("Invalid LiveViewReact patch length prefix");
+  }
   return { value, offset: offset + 1 };
 };
 
-const skipDigits = (payload, offset) => {
+const skipDigits = (payload: string, offset: number): number => {
   while (offset < payload.length) {
     const code = payload.charCodeAt(offset);
     if (code < 48 || code > 57) break;
@@ -99,7 +120,7 @@ const skipDigits = (payload, offset) => {
   return offset;
 };
 
-export const decodeCompactJson = (value) => {
+export const decodeCompactJson = (value: string): unknown => {
   return JSON.parse(
     value.replace(/~~|~\^|\^/g, (match) => {
       if (match === "~~") return "~";

@@ -1,11 +1,11 @@
-import React from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Link } from "./link";
+import { Link, type LinkProps } from "./link";
 
-function renderLink(props) {
+function renderLink(props: LinkProps) {
   return renderToStaticMarkup(
-    React.createElement(Link, props, props.children ?? "Link"),
+    createElement(Link, props, props.children ?? "Link"),
   );
 }
 
@@ -32,7 +32,10 @@ describe("Link", () => {
     const anchor = new DOMParser()
       .parseFromString(html, "text/html")
       .querySelector("a");
-    expect(anchor.hasAttribute("download")).toBe(true);
+    if (!anchor) {
+      throw new Error("Expected rendered markup to contain an anchor");
+    }
+    expect(anchor?.hasAttribute("download")).toBe(true);
     expect(html).not.toContain("data-phx-link");
   });
 
@@ -60,5 +63,25 @@ describe("Link", () => {
     });
 
     expect(html).toContain('data-phx-link-state="replace"');
+  });
+
+  it("rejects a missing destination at runtime", () => {
+    expect(() =>
+      renderToStaticMarkup(
+        createElement(Link, {} as ComponentProps<typeof Link>),
+      ),
+    ).toThrow(
+      "Link requires exactly one non-empty href, patch, or navigate destination",
+    );
+  });
+
+  it("rejects conflicting destinations at runtime", () => {
+    expect(() =>
+      renderToStaticMarkup(
+        createElement(Link, { href: "/one", patch: "/two" } as never),
+      ),
+    ).toThrow(
+      "Link requires exactly one non-empty href, patch, or navigate destination",
+    );
   });
 });
