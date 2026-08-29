@@ -37,7 +37,9 @@ defmodule LiveViewReact.Test do
     * `:props` - The decoded props passed to the component
     * `:slots` - Base64 encoded slot content
     * `:ssr` - Boolean indicating if server-side rendering was performed
-    * `:class` - CSS classes applied to the component root element
+    * `:hydration` - The decoded immutable SSR hydration descriptor, or `nil`
+    * `:props_kind` - `"snapshot"` or `"patch"`
+    * `:streams_kind` - `"snapshot"` or `"patch"`
 
   ## Options
     * `:component` - Find a root by registry component name
@@ -65,16 +67,22 @@ defmodule LiveViewReact.Test do
         |> Floki.find("[phx-hook='LiveViewReactHook']")
         |> find_component!(opts)
 
+      component = attr(react, "data-component")
+      react_target = direct_react_target!(react)
+      hydration = decode_hydration_descriptor(react_target)
+      validate_hydration_component!(hydration, component)
+
       %{
         props: LiveViewReact.Patch.decode_object(attr(react, "data-props")),
-        component: attr(react, "data-component"),
+        component: component,
         id: attr(react, "id"),
         slots: extract_base64_slots(attr(react, "data-slots")),
-        ssr: attr(react, "data-ssr") == "true",
-        use_diff: attr(react, "data-use-diff") == "true",
-        class: attr(react, "class"),
+        ssr: hydration != nil,
+        hydration: hydration,
+        props_kind: attr(react, "data-props-kind"),
         props_diff: LiveViewReact.Patch.deserialize(attr(react, "data-props-diff") || ""),
-        streams_diff: LiveViewReact.Patch.deserialize(attr(react, "data-streams-diff") || "")
+        streams_diff: LiveViewReact.Patch.deserialize(attr(react, "data-streams-diff") || ""),
+        streams_kind: attr(react, "data-streams-kind")
       }
     else
       raise "Floki is not installed. Add {:floki, \"~> 0.38\", only: :test} to use LiveViewReact.Test"
@@ -133,5 +141,56 @@ defmodule LiveViewReact.Test do
       [value] -> value
       [] -> nil
     end
+  end
+
+  defp direct_react_target!(react) do
+    targets =
+      Enum.filter(Floki.children(react), fn
+        {_tag, _attributes, _children} = child -> has_attr?(child, "data-react-target")
+        _other -> false
+      end)
+
+    case targets do
+      [target] -> target
+      _targets -> raise "LiveViewReact root must contain exactly one direct React target"
+    end
+  end
+
+  defp has_attr?(element, name), do: Floki.attribute(element, name) != []
+
+  defp decode_hydration_descriptor(target) do
+    case attr(target, "data-react-hydration") do
+      nil -> nil
+      descriptor -> descriptor |> Jason.decode!() |> validate_hydration_descriptor!()
+    end
+  end
+
+  defp validate_hydration_descriptor!(
+         %{
+           "version" => 1,
+           "component" => component,
+           "props" => props,
+           "slots" => slots
+         } = descriptor
+       )
+       when map_size(descriptor) == 4 and is_binary(component) and component != "" and
+              is_map(props) and is_map(slots) do
+    if Enum.all?(slots, fn {name, html} -> is_binary(name) and is_binary(html) end) do
+      descriptor
+    else
+      raise "Invalid data-react-hydration descriptor"
+    end
+  end
+
+  defp validate_hydration_descriptor!(_descriptor) do
+    raise "Invalid data-react-hydration descriptor"
+  end
+
+  defp validate_hydration_component!(nil, _component), do: :ok
+
+  defp validate_hydration_component!(%{"component" => component}, component), do: :ok
+
+  defp validate_hydration_component!(_hydration, _component) do
+    raise "data-react-hydration component must match data-component"
   end
 end

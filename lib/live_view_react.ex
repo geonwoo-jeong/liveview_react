@@ -2,7 +2,8 @@ defmodule LiveViewReact do
   @moduledoc """
   Phoenix function components for rendering React roots in LiveView.
 
-  Every root requires an explicit DOM `id` and registry `component` name:
+  Every root requires an explicit DOM `id`, registry `component` name, and
+  LiveView `socket`:
 
       <.react id="counter" component="Counter" socket={@socket} count={@count} />
   """
@@ -19,13 +20,14 @@ defmodule LiveViewReact do
 
   @ssr_default Application.compile_env(:liveview_react, :ssr, true)
   @diff_default Application.compile_env(:liveview_react, :enable_props_diff, true)
-  @reserved_assigns ~w(id component class ssr diff socket __changed__ __given__)a
+  @reserved_assigns ~w(id component ssr diff socket __changed__ __given__)a
 
   @doc """
   Renders one explicitly identified React component root.
 
-  `:id` and `:component` must be non-empty strings. All remaining assigns,
-  except LiveView internals and rendering options, are transported as props.
+  `:id` and `:component` must be non-empty strings, and `:socket` must be a
+  `Phoenix.LiveView.Socket`. All remaining ordinary assigns are transported as
+  props; streams and slots use their dedicated transports.
   """
   @spec react(map()) :: Phoenix.LiveView.Rendered.t()
   def react(assigns) when is_map(assigns) do
@@ -40,35 +42,51 @@ defmodule LiveViewReact do
       id={@id}
       data-component={@component}
       data-props={Patch.encode_object(Encoder.encode(@props, []))}
+      data-props-kind={@props_kind}
       data-props-diff={@props_diff}
       data-streams-diff={@streams_diff}
+      data-streams-kind={@streams_kind}
       data-slots={@slots |> Slots.base_encode_64() |> json()}
-      data-ssr={is_map(@ssr_render)}
-      data-use-diff={to_string(@use_diff)}
       phx-update="ignore"
       phx-hook="LiveViewReactHook"
-      class={@class}
-    ><div data-react-target><%= raw(@ssr_render[:html]) %></div></div>
+    ><div
+      data-react-target
+      data-react-hydration={
+        if is_map(@hydration_descriptor), do: json(@hydration_descriptor), else: nil
+      }
+    ><%= raw(@ssr_render[:html]) %></div></div>
     """
   end
 
   defp validate_required_assigns!(assigns) do
-    Enum.each([:id, :component], fn key ->
-      case Map.fetch(assigns, key) do
-        {:ok, value} when is_binary(value) and value != "" ->
-          :ok
+    validate_required_string!(assigns, :id)
+    validate_required_string!(assigns, :component)
 
-        _ ->
-          raise ArgumentError,
-                "LiveViewReact.react/1 requires #{inspect(key)} to be a non-empty string"
-      end
-    end)
+    case Map.fetch(assigns, :socket) do
+      {:ok, %LiveView.Socket{}} ->
+        :ok
+
+      _ ->
+        raise ArgumentError,
+              "LiveViewReact.react/1 requires :socket to be a Phoenix.LiveView.Socket"
+    end
+  end
+
+  defp validate_required_string!(assigns, key) do
+    case Map.fetch(assigns, key) do
+      {:ok, value} when is_binary(value) and value != "" ->
+        :ok
+
+      _ ->
+        raise ArgumentError,
+              "LiveViewReact.react/1 requires #{inspect(key)} to be a non-empty string"
+    end
   end
 
   # Flags derived from the assigns that drive how the component is rendered.
   defp render_flags(assigns) do
     init = Map.get(assigns, :__changed__) == nil
-    dead = assigns[:socket] == nil or not LiveView.connected?(assigns[:socket])
+    dead = not LiveView.connected?(assigns.socket)
 
     %{
       init: init,
@@ -81,49 +99,75 @@ defmodule LiveViewReact do
 
   # Builds the assigns consumed by the template: props, diffs, slots and SSR output.
   defp prepare_assigns(assigns, flags) do
+    transport_snapshot? = flags.init or flags.dead
+    props_snapshot? = transport_snapshot? or not flags.diff
+
     base_assigns =
-      if flags.diff do
-        Enum.filter(assigns, fn {k, _v} -> key_changed(assigns, k) end)
-      else
+      if props_snapshot? do
         assigns
+      else
+        Enum.filter(assigns, fn {key, _value} -> key_changed(assigns, key) end)
       end
 
     {props, _} = extract(base_assigns, assigns, :props)
     {streams, _} = extract(base_assigns, assigns, :streams)
     {slots, slots_changed?} = extract(assigns, assigns, :slots)
 
-    props_diff = if flags.diff, do: calculate_props_diff(props, assigns), else: []
+    props_diff = if props_snapshot?, do: [], else: calculate_props_diff(props, assigns)
 
     streams_diff =
       if flags.streams_diff,
-        do: calculate_streams_diff(streams, flags.init or flags.dead),
+        do: calculate_streams_diff(streams, transport_snapshot?),
         else: []
 
     assigns
-    |> Map.put_new(:class, nil)
     |> Map.put(:props, props)
+    |> Map.put(:props_kind, transport_kind(props_snapshot?))
     |> Map.put(:props_diff, Patch.serialize(props_diff))
     |> Map.put(:streams_diff, Patch.serialize(streams_diff))
-    |> Map.put(:use_diff, flags.diff)
+    |> Map.put(:streams_kind, transport_kind(transport_snapshot?))
     |> Map.put(:slots, if(slots_changed?, do: Slots.rendered_slot_map(slots), else: %{}))
     |> put_ssr_render(flags)
-    |> mark_computed_changed(flags, slots_changed?)
+    |> mark_computed_changed(flags, slots_changed?, transport_snapshot?)
   end
 
-  defp put_ssr_render(assigns, flags) do
-    Map.put(assigns, :ssr_render, if(flags.ssr, do: ssr_render(assigns), else: nil))
+  defp transport_kind(true), do: "snapshot"
+  defp transport_kind(false), do: "patch"
+
+  defp put_ssr_render(assigns, %{ssr: true}) do
+    request = ssr_request(assigns)
+
+    case render_ssr(request) do
+      nil ->
+        put_ssr_result(assigns, nil, nil)
+
+      ssr_render ->
+        descriptor = Map.put(request, :version, 1)
+        put_ssr_result(assigns, ssr_render, descriptor)
+    end
+  end
+
+  defp put_ssr_render(assigns, _flags), do: put_ssr_result(assigns, nil, nil)
+
+  defp put_ssr_result(assigns, ssr_render, hydration_descriptor) do
+    assigns
+    |> Map.put(:ssr_render, ssr_render)
+    |> Map.put(:hydration_descriptor, hydration_descriptor)
   end
 
   # Marks the assigns we computed ourselves as changed so LiveView diffs them.
-  defp mark_computed_changed(assigns, flags, slots_changed?) do
+  defp mark_computed_changed(assigns, flags, slots_changed?, transport_snapshot?) do
     full_props? = flags.init or flags.dead or not flags.diff
 
     computed_changed = %{
       props: full_props?,
+      props_kind: true,
       slots: slots_changed?,
       ssr_render: flags.ssr,
+      hydration_descriptor: flags.ssr,
       props_diff: not full_props?,
-      streams_diff: flags.streams_diff
+      streams_diff: flags.streams_diff or transport_snapshot?,
+      streams_kind: true
     }
 
     update_in(assigns.__changed__, fn
@@ -240,12 +284,16 @@ defmodule LiveViewReact do
   defp key_changed(%{__changed__: nil}, _key), do: true
   defp key_changed(%{__changed__: changed}, key), do: changed[key] != nil
 
-  defp ssr_render(assigns) do
-    SSR.render(%{
+  defp ssr_request(assigns) do
+    %{
       component: assigns.component,
       props: Encoder.encode(assigns.props, []),
       slots: assigns.slots
-    })
+    }
+  end
+
+  defp render_ssr(request) do
+    SSR.render(request)
   rescue
     SSR.NotConfigured -> nil
   end

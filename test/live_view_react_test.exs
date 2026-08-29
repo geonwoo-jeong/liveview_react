@@ -3,9 +3,20 @@ defmodule LiveViewReactTest do
 
   import LiveViewReact
   import Phoenix.Component
-  import Phoenix.LiveViewTest
+
+  require Phoenix.LiveViewTest
 
   alias LiveViewReact.Test
+  alias Phoenix.LiveView.LiveStream
+  alias Phoenix.LiveView.Socket
+
+  defmodule SSRRenderer do
+    @moduledoc false
+    @behaviour LiveViewReact.SSR
+
+    @impl true
+    def render(_request), do: "<strong>server rendered</strong>"
+  end
 
   doctest LiveViewReact
 
@@ -19,12 +30,37 @@ defmodule LiveViewReactTest do
   describe "basic component rendering" do
     def simple_component(assigns) do
       ~H"""
-      <.react id="my-component" component="MyComponent" firstName="john" lastName="doe" />
+      <.react socket={@socket} id="my-component" component="MyComponent" firstName="john" lastName="doe" />
+      """
+    end
+
+    def hydrated_component(assigns) do
+      ~H"""
+      <.react
+        socket={@socket}
+        id="hydrated-component"
+        component="HydratedComponent"
+        greeting="hello"
+      >
+        <em>SSR child</em>
+      </.react>
+      """
+    end
+
+    def hydrated_stream_component(assigns) do
+      ~H"""
+      <.react
+        socket={@socket}
+        id="hydrated-stream-component"
+        component="HydratedStreamComponent"
+        users={@users}
+        title="Users"
+      />
       """
     end
 
     test "renders component with correct props" do
-      html = render_component(&simple_component/1)
+      html = render_react(&simple_component/1)
       react = Test.get_react(html)
 
       assert react.component == "MyComponent"
@@ -32,7 +68,7 @@ defmodule LiveViewReactTest do
     end
 
     test "uses the required explicit ID" do
-      html = render_component(&simple_component/1)
+      html = render_react(&simple_component/1)
       react = Test.get_react(html)
 
       assert react.id == "my-component"
@@ -44,6 +80,7 @@ defmodule LiveViewReactTest do
                    fn ->
                      LiveViewReact.react(%{
                        component: "MyComponent",
+                       socket: %Socket{},
                        __changed__: nil
                      })
                    end
@@ -55,6 +92,7 @@ defmodule LiveViewReactTest do
                    fn ->
                      LiveViewReact.react(%{
                        id: "my-component",
+                       socket: %Socket{},
                        __changed__: nil
                      })
                    end
@@ -63,7 +101,12 @@ defmodule LiveViewReactTest do
     test "rejects empty and non-string identity values" do
       for {key, value} <- [id: "", id: :counter, component: "", component: Counter] do
         assigns =
-          %{id: "my-component", component: "MyComponent", __changed__: nil}
+          %{
+            id: "my-component",
+            component: "MyComponent",
+            socket: %Socket{},
+            __changed__: nil
+          }
           |> Map.put(key, value)
 
         assert_raise ArgumentError,
@@ -79,9 +122,85 @@ defmodule LiveViewReactTest do
                      LiveViewReact.react(%{
                        id: "my-component",
                        name: "MyComponent",
+                       socket: %Socket{},
                        __changed__: nil
                      })
                    end
+    end
+
+    test "requires a LiveView socket" do
+      for socket <- [:missing, nil, %{}, self()] do
+        assigns = %{id: "my-component", component: "MyComponent", __changed__: nil}
+        assigns = if socket == :missing, do: assigns, else: Map.put(assigns, :socket, socket)
+
+        assert_raise ArgumentError,
+                     "LiveViewReact.react/1 requires :socket to be a Phoenix.LiveView.Socket",
+                     fn -> LiveViewReact.react(assigns) end
+      end
+    end
+  end
+
+  describe "DOM ownership" do
+    test "keeps transport metadata on the Phoenix-owned wrapper" do
+      html = render_react(&simple_component/1)
+      [wrapper] = html |> Floki.parse_fragment!() |> Floki.find("#my-component")
+
+      assert Floki.attribute(wrapper, "phx-hook") == ["LiveViewReactHook"]
+      assert Floki.attribute(wrapper, "phx-update") == ["ignore"]
+      assert Floki.attribute(wrapper, "data-component") == ["MyComponent"]
+      assert Floki.attribute(wrapper, "data-props-kind") == ["snapshot"]
+      assert Floki.attribute(wrapper, "data-streams-kind") == ["snapshot"]
+    end
+
+    test "renders exactly one direct React-owned target" do
+      html = render_react(&simple_component/1)
+      [wrapper] = html |> Floki.parse_fragment!() |> Floki.find("#my-component")
+
+      assert [{"div", target_attributes, _children}] = Floki.children(wrapper)
+      assert Enum.any?(target_attributes, fn {name, _value} -> name == "data-react-target" end)
+      refute Enum.any?(target_attributes, fn {name, _value} -> name == "data-props" end)
+    end
+
+    test "keeps the exact SSR hydration descriptor on the immutable React target" do
+      html = with_ssr_renderer(fn -> render_react(&hydrated_component/1) end)
+      [wrapper] = html |> Floki.parse_fragment!() |> Floki.find("#hydrated-component")
+      [target] = Floki.children(wrapper)
+      descriptor = target |> Floki.attribute("data-react-hydration") |> List.first()
+
+      assert Floki.attribute(wrapper, "data-react-hydration") == []
+
+      assert Jason.decode!(descriptor) == %{
+               "version" => 1,
+               "component" => "HydratedComponent",
+               "props" => %{"greeting" => "hello"},
+               "slots" => %{"default" => "<em>SSR child</em>"}
+             }
+
+      assert Floki.text(target) == "server rendered"
+
+      react = Test.get_react(html)
+      assert react.ssr
+      assert react.hydration == Jason.decode!(descriptor)
+    end
+
+    test "excludes LiveStreams from the SSR hydration descriptor" do
+      users = LiveStream.new(:users, make_ref(), [%{id: 1, name: "Ada"}], [])
+
+      html =
+        with_ssr_renderer(fn ->
+          render_react(&hydrated_stream_component/1, users: users)
+        end)
+
+      react = Test.get_react(html)
+
+      assert react.hydration == %{
+               "version" => 1,
+               "component" => "HydratedStreamComponent",
+               "props" => %{"title" => "Users"},
+               "slots" => %{}
+             }
+
+      refute Map.has_key?(react.hydration["props"], "users")
     end
   end
 
@@ -89,14 +208,14 @@ defmodule LiveViewReactTest do
     def multi_component(assigns) do
       ~H"""
       <div>
-        <.react id="profile-1" firstName="John" component="UserProfile" />
-        <.react id="card-1" firstName="Jane" component="UserCard" />
+        <.react socket={@socket} id="profile-1" firstName="John" component="UserProfile" />
+        <.react socket={@socket} id="card-1" firstName="Jane" component="UserCard" />
       </div>
       """
     end
 
     test "finds first component by default" do
-      html = render_component(&multi_component/1)
+      html = render_react(&multi_component/1)
       react = Test.get_react(html)
 
       assert react.component == "UserProfile"
@@ -104,7 +223,7 @@ defmodule LiveViewReactTest do
     end
 
     test "finds specific component by registry name" do
-      html = render_component(&multi_component/1)
+      html = render_react(&multi_component/1)
       react = Test.get_react(html, component: "UserCard")
 
       assert react.component == "UserCard"
@@ -112,7 +231,7 @@ defmodule LiveViewReactTest do
     end
 
     test "finds specific component by id" do
-      html = render_component(&multi_component/1)
+      html = render_react(&multi_component/1)
       react = Test.get_react(html, id: "card-1")
 
       assert react.component == "UserCard"
@@ -120,7 +239,7 @@ defmodule LiveViewReactTest do
     end
 
     test "raises error when component selector is not found" do
-      html = render_component(&multi_component/1)
+      html = render_react(&multi_component/1)
 
       assert_raise RuntimeError,
                    ~r/No LiveViewReact component found with component="Unknown".*Available components: UserProfile#profile-1, UserCard#card-1/,
@@ -130,7 +249,7 @@ defmodule LiveViewReactTest do
     end
 
     test "raises error when component with id not found" do
-      html = render_component(&multi_component/1)
+      html = render_react(&multi_component/1)
 
       assert_raise RuntimeError,
                    ~r/No LiveViewReact component found with id="unknown-id".*Available components: UserProfile#profile-1, UserCard#card-1/,
@@ -140,40 +259,43 @@ defmodule LiveViewReactTest do
     end
   end
 
-  describe "styling" do
+  describe "ordinary props" do
     def styled_component(assigns) do
       ~H"""
-      <.react id="styled" component="MyComponent" class="bg-blue-500 rounded-sm" />
+      <.react socket={@socket} id="styled" component="MyComponent" class="bg-blue-500 rounded-sm" />
       """
     end
 
-    test "applies CSS classes" do
-      html = render_component(&styled_component/1)
+    test "transports class to React instead of mutating the ignored wrapper" do
+      html = render_react(&styled_component/1)
       react = Test.get_react(html)
+      [wrapper] = html |> Floki.parse_fragment!() |> Floki.find("#styled")
 
-      assert react.class == "bg-blue-500 rounded-sm"
+      assert react.props["class"] == "bg-blue-500 rounded-sm"
+      assert Floki.attribute(wrapper, "class") == []
     end
   end
 
   describe "SSR behavior" do
     def ssr_component(assigns) do
       ~H"""
-      <.react id="without-ssr" component="MyComponent" ssr={false} />
+      <.react socket={@socket} id="without-ssr" component="MyComponent" ssr={false} />
       """
     end
 
     test "respects SSR flag" do
-      html = render_component(&ssr_component/1)
+      html = render_react(&ssr_component/1)
       react = Test.get_react(html)
 
       assert react.ssr == false
+      assert react.hydration == nil
     end
   end
 
   describe "slots" do
     def component_with_named_slot(assigns) do
       ~H"""
-      <.react id="named-slot" component="WithSlots">
+      <.react socket={@socket} id="named-slot" component="WithSlots">
         <:hello>Simple content</:hello>
       </.react>
       """
@@ -181,7 +303,7 @@ defmodule LiveViewReactTest do
 
     def component_with_inner_block(assigns) do
       ~H"""
-      <.react id="default-slot" component="WithSlots">
+      <.react socket={@socket} id="default-slot" component="WithSlots">
         Simple content
       </.react>
       """
@@ -191,7 +313,7 @@ defmodule LiveViewReactTest do
       assigns = assign(assigns, :untrusted, ~S|<img src=x onerror="alert(1)">|)
 
       ~H"""
-      <.react id="untrusted-slot" component="WithSlots">
+      <.react socket={@socket} id="untrusted-slot" component="WithSlots">
         {@untrusted}
       </.react>
       """
@@ -200,18 +322,18 @@ defmodule LiveViewReactTest do
     test "warns about usage of named slot" do
       assert_raise RuntimeError,
                    "Unsupported slot: hello, only one default slot is supported, passed as React children.",
-                   fn -> render_component(&component_with_named_slot/1) end
+                   fn -> render_react(&component_with_named_slot/1) end
     end
 
     test "renders default slot with inner_block" do
-      html = render_component(&component_with_inner_block/1)
+      html = render_react(&component_with_inner_block/1)
       react = Test.get_react(html)
 
       assert react.slots == %{"default" => "Simple content"}
     end
 
     test "encodes slot as base64" do
-      html = render_component(&component_with_inner_block/1)
+      html = render_react(&component_with_inner_block/1)
 
       # Get raw data-slots attribute to verify base64 encoding
       doc = Floki.parse_fragment!(html)
@@ -227,7 +349,7 @@ defmodule LiveViewReactTest do
     end
 
     test "keeps dynamic slot values HTML-escaped before transport" do
-      html = render_component(&component_with_untrusted_slot/1)
+      html = render_react(&component_with_untrusted_slot/1)
       react = Test.get_react(html)
 
       assert react.slots == %{
@@ -237,15 +359,34 @@ defmodule LiveViewReactTest do
 
     test "handles empty slots" do
       html =
-        render_component(fn assigns ->
+        render_react(fn assigns ->
           ~H"""
-          <.react id="empty-slot" component="WithSlots" />
+          <.react socket={@socket} id="empty-slot" component="WithSlots" />
           """
         end)
 
       react = Test.get_react(html)
 
       assert react.slots == %{}
+    end
+  end
+
+  defp render_react(component, assigns \\ []) do
+    assigns = Keyword.put_new(assigns, :socket, %Socket{})
+    Phoenix.LiveViewTest.render_component(component, assigns)
+  end
+
+  defp with_ssr_renderer(fun) do
+    previous_renderer = Application.fetch_env(:liveview_react, :ssr_module)
+    Application.put_env(:liveview_react, :ssr_module, SSRRenderer)
+
+    try do
+      fun.()
+    after
+      case previous_renderer do
+        {:ok, renderer} -> Application.put_env(:liveview_react, :ssr_module, renderer)
+        :error -> Application.delete_env(:liveview_react, :ssr_module)
+      end
     end
   end
 end

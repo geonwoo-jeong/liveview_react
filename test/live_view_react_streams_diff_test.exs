@@ -6,7 +6,12 @@ defmodule LiveViewReact.StreamsDiffTest do
   alias Phoenix.LiveView.Socket
 
   defp render_react_assigns(assigns) do
-    assigns = Map.merge(%{id: "streams-test", component: "TestComponent"}, assigns)
+    assigns =
+      Map.merge(
+        %{id: "streams-test", component: "TestComponent", socket: %Socket{}},
+        assigns
+      )
+
     rendered = LiveViewReact.react(assigns)
     html = rendered |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
     Test.get_react(html)
@@ -65,6 +70,7 @@ defmodule LiveViewReact.StreamsDiffTest do
       ]
 
       assert react.props == %{}
+      assert react.streams_kind == "snapshot"
       assert_patches_equal(react.streams_diff, expected_patches)
     end
 
@@ -79,6 +85,8 @@ defmodule LiveViewReact.StreamsDiffTest do
           socket: connected_socket(),
           __changed__: %{users: LiveStream.new(:users, make_ref(), [], [])}
         })
+
+      assert react.streams_kind == "patch"
 
       assert_patches_equal(react.streams_diff, [
         %{
@@ -166,6 +174,24 @@ defmodule LiveViewReact.StreamsDiffTest do
       react = render_react_assigns(%{users: stream, title: "Page", __changed__: nil})
 
       assert react.props == %{"title" => "Page"}
+    end
+
+    test "dead render emits an empty stream snapshot that clears removed keys" do
+      assigns = %{
+        id: "streams-test",
+        component: "TestComponent",
+        title: "No streams remain",
+        socket: %Socket{},
+        __changed__: %{title: "Before"}
+      }
+
+      rendered = LiveViewReact.react(assigns)
+      html = rendered |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      react = Test.get_react(html)
+
+      assert react.streams_kind == "snapshot"
+      assert react.streams_diff == []
+      assert Floki.attribute(Floki.parse_fragment!(html), "data-streams-diff") == [""]
     end
   end
 end

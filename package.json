@@ -37,6 +37,7 @@
     "access": "public"
   },
   "allowScripts": {
+    "fsevents@2.3.2": true,
     "fsevents@2.3.3": true
   },
   "peerDependencies": {
@@ -44,6 +45,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@types/node": "^24.3.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
@@ -59,11 +61,13 @@
   "scripts": {
     "build": "vite build && npm run build:types",
     "build:types": "tsc -p tsconfig.build.json",
-    "format": "prettier --write \"assets/js/liveview_react/**/*.{ts,tsx}\" \"*.{json,ts}\"",
-    "format:check": "prettier --check \"assets/js/liveview_react/**/*.{ts,tsx}\" \"*.{json,ts}\"",
+    "format": "prettier --write \"assets/js/liveview_react/**/*.{ts,tsx}\" \"liveview_react_examples/playwright.config.ts\" \"liveview_react_examples/e2e/**/*.ts\" \"liveview_react_examples/e2e/support/*.{js,jsx}\" \"*.{json,ts}\"",
+    "format:check": "prettier --check \"assets/js/liveview_react/**/*.{ts,tsx}\" \"liveview_react_examples/playwright.config.ts\" \"liveview_react_examples/e2e/**/*.ts\" \"liveview_react_examples/e2e/support/*.{js,jsx}\" \"*.{json,ts}\"",
     "pack:check": "npm run build && node assets/js/liveview_react/tests/package-smoke.ts",
     "prepack": "npm run build",
     "test": "vitest run",
+    "test:e2e": "playwright test --config liveview_react_examples/playwright.config.ts",
+    "test:e2e:typecheck": "tsc --noEmit -p liveview_react_examples/e2e/tsconfig.json",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }

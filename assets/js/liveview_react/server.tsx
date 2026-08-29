@@ -3,14 +3,20 @@ import { renderToString } from "react-dom/server";
 
 import { getRegistryEntry, loadComponent, normalizeRegistry } from "./registry";
 import { createComponentTree } from "./tree";
+import { createConnectionStore } from "./runtime/connection";
+import { normalizeRootOptions } from "./runtime/options";
 import type {
   ComponentProps,
   ComponentRegistry,
   LiveViewReactContextValue,
+  LiveViewReactRootOptions,
   SlotMap,
 } from "./types";
 
-export interface CreateLiveViewReactServerOptions {
+export interface CreateLiveViewReactServerOptions extends Pick<
+  LiveViewReactRootOptions,
+  "strictMode" | "wrapRoot"
+> {
   readonly components: ComponentRegistry;
 }
 
@@ -23,6 +29,18 @@ export interface ServerRenderRequest {
 export interface LiveViewReactServer {
   readonly render: (request: ServerRenderRequest) => Promise<string>;
 }
+
+interface NormalizedServerRenderRequest {
+  readonly component: string;
+  readonly props: ComponentProps;
+  readonly slots: SlotMap;
+}
+
+const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
+  "component",
+  "props",
+  "slots",
+]);
 
 function unavailableDuringServerRender(): never {
   throw new Error(
@@ -52,27 +70,104 @@ function getChildren(slots: SlotMap): ReactNode[] {
   ];
 }
 
-export function createLiveViewReactServer({
-  components,
-}: CreateLiveViewReactServerOptions): LiveViewReactServer {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function assertEnumerableDataProperties(
+  value: Record<string, unknown>,
+  source: string,
+): void {
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") {
+      throw new TypeError(`${source} keys must be strings`);
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(`${source} must use enumerable data properties`);
+    }
+  }
+}
+
+function normalizeRenderRequest(input: unknown): NormalizedServerRenderRequest {
+  if (!isRecord(input)) {
+    throw new TypeError("server render request must be a plain object");
+  }
+  assertEnumerableDataProperties(input, "server render request");
+
+  for (const key of Reflect.ownKeys(input)) {
+    if (typeof key !== "string" || !SERVER_RENDER_FIELDS.includes(key)) {
+      throw new TypeError(
+        `Unknown server render request field "${String(key)}"`,
+      );
+    }
+  }
+
+  if (typeof input.component !== "string" || input.component.length === 0) {
+    throw new TypeError("server render component must be a non-empty string");
+  }
+
+  const props = Object.hasOwn(input, "props") ? input.props : {};
+  if (!isRecord(props)) {
+    throw new TypeError("server render props must be a plain object");
+  }
+  assertEnumerableDataProperties(props, "server render props");
+
+  const slots = Object.hasOwn(input, "slots") ? input.slots : {};
+  if (!isRecord(slots)) {
+    throw new TypeError("server render slots must be a plain object");
+  }
+  assertEnumerableDataProperties(slots, "server render slots");
+  for (const [slotName, slot] of Object.entries(slots)) {
+    if (typeof slot !== "string") {
+      throw new TypeError(`Server render slot "${slotName}" must be a string`);
+    }
+  }
+
+  return Object.freeze({
+    component: input.component,
+    props: Object.freeze({ ...props }),
+    slots: Object.freeze({ ...slots }) as SlotMap,
+  });
+}
+
+export function createLiveViewReactServer(
+  options: CreateLiveViewReactServerOptions,
+): LiveViewReactServer {
+  const { components, rootOptions } = normalizeRootOptions(options, "server");
+  const { strictMode = false, wrapRoot } = rootOptions;
   const registry = normalizeRegistry(components);
 
   return Object.freeze({
-    async render({
-      component,
-      props = {},
-      slots = {},
-    }: ServerRenderRequest): Promise<string> {
+    async render(request: ServerRenderRequest): Promise<string> {
+      const { component, props, slots } = normalizeRenderRequest(request);
       const entry = getRegistryEntry(registry, component);
       const Component = await loadComponent(component, entry);
-      const tree = createComponentTree({
-        Component,
-        props,
-        children: getChildren(slots),
-        context: serverContext,
-      });
+      const connectionStore = createConnectionStore();
 
-      return renderToString(tree);
+      try {
+        const tree = createComponentTree({
+          Component,
+          props,
+          children: getChildren(slots),
+          componentName: component,
+          connectionStore,
+          context: serverContext,
+          element: null,
+          strictMode,
+          ...(wrapRoot ? { wrapRoot } : {}),
+        });
+
+        return renderToString(tree);
+      } finally {
+        connectionStore.destroy();
+      }
     },
   });
 }

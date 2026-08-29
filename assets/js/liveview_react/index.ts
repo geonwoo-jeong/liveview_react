@@ -1,7 +1,8 @@
 import { createLiveViewReactHook } from "./hooks";
 import type { LiveViewReactHookDefinition } from "./hooks";
 import { normalizeRegistry } from "./registry";
-import type { ComponentRegistry } from "./types";
+import { normalizeRootOptions } from "./runtime/options";
+import type { ComponentRegistry, LiveViewReactRootOptions } from "./types";
 
 export { Link } from "./link";
 export { useLiveViewReact } from "./context";
@@ -19,6 +20,9 @@ export type {
   LazyComponentModule,
   LiveViewReactComponent,
   LiveViewReactContextValue,
+  LiveViewReactRootOptions,
+  LiveViewReactRootWrapper,
+  LiveViewReactRootWrapperContext,
   PushEvent,
   PushEventTo,
   RemoveHandleEvent,
@@ -28,7 +32,7 @@ export type {
   UploadTo,
 } from "./types";
 
-export interface CreateLiveViewReactOptions {
+export interface CreateLiveViewReactOptions extends LiveViewReactRootOptions {
   readonly components: ComponentRegistry;
 }
 
@@ -40,14 +44,15 @@ export interface LiveViewReact {
   readonly hooks: LiveViewReactHooks;
 }
 
-export function createLiveViewReact({
-  components,
-}: CreateLiveViewReactOptions): LiveViewReact {
+export function createLiveViewReact(
+  options: CreateLiveViewReactOptions,
+): LiveViewReact {
+  const { components, rootOptions } = normalizeRootOptions(options, "client");
   const registry = normalizeRegistry(components);
 
   return Object.freeze({
     hooks: Object.freeze({
-      LiveViewReactHook: createLiveViewReactHook(registry),
+      LiveViewReactHook: createLiveViewReactHook(registry, rootOptions),
     }),
   });
 }
