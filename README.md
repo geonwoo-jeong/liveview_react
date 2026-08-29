@@ -184,6 +184,7 @@ export const { render } = createLiveViewReactServer({ components });
 
 See [installation](guides/installation.md),
 [client hooks](guides/client_hooks.md), [events](guides/events.md),
+[forms](guides/forms.md), [uploads](guides/uploads.md),
 [streams](guides/streams.md), [slots](guides/slots.md),
 [SSR](guides/ssr.md), and [deployment](guides/deployment.md) for the full
 setup.
