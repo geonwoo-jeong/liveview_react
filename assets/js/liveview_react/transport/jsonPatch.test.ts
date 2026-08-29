@@ -85,6 +85,15 @@ describe("applyPatch", () => {
     expect(original.rows).toEqual([first]);
   });
 
+  it.each([1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects an invalid stream limit: %s",
+    (value) => {
+      expect(() =>
+        applyPatch({ rows: [1, 2] }, [{ op: "limit", path: "/rows", value }]),
+      ).toThrow("requires a safe integer");
+    },
+  );
+
   it("treats missing stream delete and update_only targets as idempotent", () => {
     const original = { rows: [{ __dom_id: "a", value: 1 }] };
 

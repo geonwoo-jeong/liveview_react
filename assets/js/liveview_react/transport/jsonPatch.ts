@@ -197,16 +197,16 @@ function ownPathToParent(
   return target;
 }
 
-function requireFiniteNumber(operation: PatchOperationName, value: unknown) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new TypeError(`JSON Patch ${operation} requires a finite number`);
+function requireSafeInteger(operation: PatchOperationName, value: unknown) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    throw new TypeError(`JSON Patch ${operation} requires a safe integer`);
   }
 
   return value;
 }
 
 function applyLimit(target: unknown[], value: unknown): void {
-  const limit = requireFiniteNumber("limit", value);
+  const limit = requireSafeInteger("limit", value);
 
   if (limit >= 0) {
     if (limit < target.length) target.splice(limit);

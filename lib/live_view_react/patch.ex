@@ -38,6 +38,9 @@ defmodule LiveViewReact.Patch do
   Paths are transported as JSON Pointer strings unchanged.
   """
 
+  @min_safe_integer -9_007_199_254_740_991
+  @max_safe_integer 9_007_199_254_740_991
+
   @doc """
   Serializes patch maps into a compact binary payload.
 
@@ -93,9 +96,16 @@ defmodule LiveViewReact.Patch do
   end
 
   defp serialize_op(%{op: op, path: path, value: value})
-       when op in ["add", "replace", "upsert", "limit"] and is_binary(path) do
+       when op in ["add", "replace", "upsert"] and is_binary(path) do
     path = encode_path(path)
     [op_code(op), Integer.to_string(js_string_length(path)), ?:, path, encode_value(value)]
+  end
+
+  defp serialize_op(%{op: "limit", path: path, value: value})
+       when is_binary(path) and is_integer(value) and
+              value >= @min_safe_integer and value <= @max_safe_integer do
+    path = encode_path(path)
+    [op_code("limit"), Integer.to_string(js_string_length(path)), ?:, path, encode_value(value)]
   end
 
   defp serialize_op(%{op: "remove", path: path} = patch)
@@ -137,6 +147,16 @@ defmodule LiveViewReact.Patch do
   end
 
   defp parse_op("remove", path, rest, acc), do: parse_ops(rest, [["remove", path] | acc])
+
+  defp parse_op("limit", path, rest, acc) do
+    {value, rest} = parse_value(rest)
+
+    if is_integer(value) and value >= @min_safe_integer and value <= @max_safe_integer do
+      parse_ops(rest, [["limit", path, value] | acc])
+    else
+      raise ArgumentError, "Patch limit must be a safe integer"
+    end
+  end
 
   defp parse_op(op, path, rest, acc) do
     {value, rest} = parse_value(rest)
