@@ -68,6 +68,8 @@ defmodule LiveViewReact.MixProject do
       extras: [
         "README.md",
         "guides/installation.md",
+        "guides/client_hooks.md",
+        "guides/events.md",
         "guides/deployment.md",
         "guides/development.md",
         "guides/ssr.md",

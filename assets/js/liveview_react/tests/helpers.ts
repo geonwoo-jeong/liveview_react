@@ -47,9 +47,23 @@ export const createMockLiveViewHook = (
       selector === ":scope > [data-react-target]" ? [target] : [],
     ),
   };
+  const defaultHookExec = vi.fn();
+  const js = vi.fn(() => {
+    if (
+      typeof liveSocket === "object" &&
+      liveSocket !== null &&
+      "js" in liveSocket &&
+      typeof liveSocket.js === "function"
+    ) {
+      return liveSocket.js();
+    }
+
+    return { exec: defaultHookExec };
+  });
 
   return {
     el: mockElement,
+    js,
     liveSocket,
     target,
     pushEvent: vi.fn(() => Promise.resolve(undefined)),

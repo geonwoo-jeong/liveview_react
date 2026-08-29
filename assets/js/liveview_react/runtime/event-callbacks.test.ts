@@ -14,8 +14,6 @@ function commands(value: unknown) {
 describe("event callbacks", () => {
   it("executes the full command chain and merges payload over every push value", () => {
     const exec = vi.fn();
-    const liveSocket = { js: vi.fn(() => ({ exec })) };
-    const element = document.createElement("div");
     const original = {
       onIncrement: [
         [
@@ -27,14 +25,14 @@ describe("event callbacks", () => {
       ],
     };
     const eventCommands = commands(original);
-    const cache = new EventCallbackCache({ element, liveSocket });
+    const cache = new EventCallbackCache({ execute: exec });
 
     cache.update(eventCommands).onIncrement?.({
       count: 2,
       shared: "payload",
     });
 
-    expect(exec).toHaveBeenCalledWith(element, [
+    expect(exec).toHaveBeenCalledWith([
       [
         "push",
         {
@@ -66,8 +64,7 @@ describe("event callbacks", () => {
   it("keeps unchanged callback references and replaces changed or removed callbacks", () => {
     const exec = vi.fn();
     const cache = new EventCallbackCache({
-      element: document.createElement("div"),
-      liveSocket: { js: () => ({ exec }) },
+      execute: exec,
     });
     const first = cache.update(
       commands({
@@ -103,8 +100,7 @@ describe("event callbacks", () => {
   it("makes retained callbacks inert when their root cache is destroyed", () => {
     const exec = vi.fn();
     const cache = new EventCallbackCache({
-      element: document.createElement("div"),
-      liveSocket: { js: () => ({ exec }) },
+      execute: exec,
     });
     const retained = cache.update(
       commands({ onIncrement: [["push", { event: "increment" }]] }),
@@ -120,8 +116,7 @@ describe("event callbacks", () => {
   it("rejects non-object or non-JSON callback payloads before execution", () => {
     const exec = vi.fn();
     const callback = new EventCallbackCache({
-      element: document.createElement("div"),
-      liveSocket: { js: () => ({ exec }) },
+      execute: exec,
     }).update(
       commands({ onIncrement: [["push", { event: "increment" }]] }),
     ).onIncrement!;
@@ -135,17 +130,6 @@ describe("event callbacks", () => {
       "must contain only JSON values",
     );
     expect(exec).not.toHaveBeenCalled();
-  });
-
-  it("requires the current public LiveSocket js().exec API", () => {
-    const callback = new EventCallbackCache({
-      element: document.createElement("div"),
-      liveSocket: {},
-    }).update(
-      commands({ onIncrement: [["push", { event: "increment" }]] }),
-    ).onIncrement!;
-
-    expect(() => callback()).toThrow("public js().exec API");
   });
 
   it("creates explicit failure callbacks for server rendering and hydration", () => {

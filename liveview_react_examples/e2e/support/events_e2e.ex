@@ -37,9 +37,14 @@ defmodule LiveViewReactExamplesWeb.LiveEventsE2E do
           component="E2EEventsProbe"
           patchStep={@step}
           r-on:increment={
-            JS.add_class("e2e-transition-run", to: "#callback-transition")
+            JS.transition(
+              {"e2e-transition-active", "e2e-transition-from", "e2e-transition-to"},
+              to: "#callback-transition",
+              time: 1_000
+            )
             |> JS.push("callback_increment",
               target: "#events-callback-target",
+              loading: "#callback-loading",
               value: %{static: "server"}
             )
           }

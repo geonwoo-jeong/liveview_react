@@ -1,28 +1,22 @@
 import type { ComponentProps } from "../types";
-import { readLiveSocketCommands } from "./live-socket";
 
 interface JsonObject {
   readonly [key: string]: JsonValue;
 }
 
 type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly JsonValue[]
-  | JsonObject;
+  null | boolean | number | string | readonly JsonValue[] | JsonObject;
 
 type EventPayload = Readonly<Record<string, JsonValue>>;
 type EventCommand = readonly [string, Readonly<Record<string, JsonValue>>];
 type EventCommands = readonly EventCommand[];
 export type EventCommandMap = Readonly<Record<string, EventCommands>>;
+export type EventCommandExecutor = (commands: EventCommands) => void;
 type EventCallback = (payload?: EventPayload) => void;
 type EventCallbackProps = Readonly<Record<string, EventCallback>>;
 
 interface EventCallbackCacheOptions {
-  readonly element: HTMLElement;
-  readonly liveSocket: unknown;
+  readonly execute: EventCommandExecutor;
 }
 
 interface CachedEventCallback {
@@ -173,10 +167,7 @@ function normalizeCommands(value: unknown, source: string): EventCommands {
       }
 
       const [operation, options] = command;
-      if (
-        typeof operation !== "string" ||
-        !OPERATION_NAME.test(operation)
-      ) {
+      if (typeof operation !== "string" || !OPERATION_NAME.test(operation)) {
         throw new TypeError(
           `${commandSource} operation must be a lowercase command name`,
         );
@@ -205,10 +196,7 @@ export function normalizeEventCommandMap(
         `${source} key "${propName}" must be a React onCamelCase prop name`,
       );
     }
-    normalized[propName] = normalizeCommands(
-      commands,
-      `${source}.${propName}`,
-    );
+    normalized[propName] = normalizeCommands(commands, `${source}.${propName}`);
   }
 
   return Object.freeze(normalized);
@@ -294,14 +282,12 @@ export function createUnavailableEventCallbacks(
 }
 
 export class EventCallbackCache {
-  readonly #element: HTMLElement;
-  readonly #liveSocket: unknown;
+  readonly #execute: EventCommandExecutor;
   #destroyed = false;
   #entries: ReadonlyMap<string, CachedEventCallback> = new Map();
 
-  constructor({ element, liveSocket }: EventCallbackCacheOptions) {
-    this.#element = element;
-    this.#liveSocket = liveSocket;
+  constructor({ execute }: EventCallbackCacheOptions) {
+    this.#execute = execute;
   }
 
   update(events: EventCommandMap): EventCallbackProps {
@@ -345,21 +331,7 @@ export class EventCallbackCache {
   ): EventCallback {
     return (payload?: EventPayload) => {
       if (this.#entries.get(callbackName)?.token !== token) return;
-
-      const liveSocketCommands = readLiveSocketCommands(this.#liveSocket);
-      if (
-        liveSocketCommands === null ||
-        typeof liveSocketCommands.exec !== "function"
-      ) {
-        throw new Error(
-          `Event callback "${callbackName}" requires the current public js().exec API`,
-        );
-      }
-
-      liveSocketCommands.exec(
-        this.#element,
-        mergePayload(callbackName, commands, payload),
-      );
+      this.#execute(mergePayload(callbackName, commands, payload));
     };
   }
 }
