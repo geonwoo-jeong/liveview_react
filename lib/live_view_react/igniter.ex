@@ -178,7 +178,7 @@ if Code.ensure_loaded?(Igniter) do
         [key],
         value,
         updater: fn zipper ->
-          if Igniter.Code.Common.nodes_equal?(zipper, expected_ast) do
+          if config_values_equal?(Sourceror.Zipper.node(zipper), expected_ast) do
             {:ok, zipper}
           else
             {:error,
@@ -187,6 +187,12 @@ if Code.ensure_loaded?(Igniter) do
           end
         end
       )
+    end
+
+    @doc false
+    @spec config_values_equal?(Macro.t(), Macro.t()) :: boolean()
+    def config_values_equal?(actual_ast, expected_ast) do
+      Macro.to_string(actual_ast) == Macro.to_string(expected_ast)
     end
 
     defp maybe_install_demo(igniter, false, _router, _web_module), do: igniter
