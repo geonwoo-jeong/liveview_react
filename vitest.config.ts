@@ -2,8 +2,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    clearMocks: true,
     environment: "jsdom",
-    globals: true,
-    include: ["assets/**/*.test.js"],
+    include: ["assets/js/liveview_react/**/*.test.{ts,tsx}"],
   },
 });
