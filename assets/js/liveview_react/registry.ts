@@ -20,50 +20,88 @@ function validateEntry(
   componentName: string,
   entry: unknown,
 ): ComponentRegistryEntry {
-  if (typeof entry !== "object" || entry === null) {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
     throw new TypeError(
       `Component "${componentName}" must use a tagged { component } or { load } registry entry`,
     );
   }
 
-  const candidate = entry as Record<string, unknown>;
-  const hasComponent = Object.hasOwn(candidate, "component");
-  const hasLoader = Object.hasOwn(candidate, "load");
-
-  if (hasComponent === hasLoader) {
+  const prototype = Object.getPrototypeOf(entry);
+  const keys = Reflect.ownKeys(entry);
+  if (
+    (prototype !== Object.prototype && prototype !== null) ||
+    keys.length !== 1 ||
+    (keys[0] !== "component" && keys[0] !== "load")
+  ) {
     throw new TypeError(
-      `Component "${componentName}" must define exactly one of { component } or { load }`,
+      `Component "${componentName}" must use a tagged { component } or { load } registry entry with no extra keys`,
     );
   }
 
-  if (hasComponent && !isComponent(candidate.component)) {
+  const key = keys[0];
+  const descriptor = Object.getOwnPropertyDescriptor(entry, key);
+  if (!descriptor?.enumerable || !("value" in descriptor)) {
+    throw new TypeError(
+      `Component "${componentName}" must use an enumerable tagged data property`,
+    );
+  }
+
+  if (key === "component" && !isComponent(descriptor.value)) {
     throw new TypeError(
       `Component "${componentName}" has an invalid component value`,
     );
   }
 
-  if (hasLoader && typeof candidate.load !== "function") {
+  if (key === "load" && typeof descriptor.value !== "function") {
     throw new TypeError(`Component "${componentName}" has an invalid loader`);
   }
 
   return entry as ComponentRegistryEntry;
 }
 
+function readRegistryEntries(registry: unknown): readonly [string, unknown][] {
+  if (
+    typeof registry !== "object" ||
+    registry === null ||
+    Array.isArray(registry)
+  ) {
+    throw new TypeError("components must be a plain registry object");
+  }
+
+  const prototype = Object.getPrototypeOf(registry);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError("components must be a plain registry object");
+  }
+
+  return Reflect.ownKeys(registry).map((key) => {
+    if (typeof key !== "string") {
+      throw new TypeError("Component registry keys must be enumerable strings");
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(registry, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(
+        "Component registry keys must be enumerable data properties",
+      );
+    }
+
+    return [key, descriptor.value] as const;
+  });
+}
+
 export function normalizeRegistry(
   registry: ComponentRegistry,
 ): ComponentRegistry {
-  if (typeof registry !== "object" || registry === null) {
-    throw new TypeError("components must be a registry object");
-  }
+  const entries = readRegistryEntries(registry).map(
+    ([componentName, entry]) => {
+      if (componentName.length === 0) {
+        throw new TypeError("Component registry names must not be empty");
+      }
 
-  const entries = Object.entries(registry).map(([componentName, entry]) => {
-    if (componentName.length === 0) {
-      throw new TypeError("Component registry names must not be empty");
-    }
-
-    const validatedEntry = validateEntry(componentName, entry);
-    return [componentName, Object.freeze({ ...validatedEntry })] as const;
-  });
+      const validatedEntry = validateEntry(componentName, entry);
+      return [componentName, Object.freeze({ ...validatedEntry })] as const;
+    },
+  );
 
   return Object.freeze(Object.fromEntries(entries));
 }

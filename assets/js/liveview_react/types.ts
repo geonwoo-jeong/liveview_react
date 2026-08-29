@@ -1,4 +1,5 @@
-import type { ComponentType, ExoticComponent } from "react";
+import type { ComponentType, ExoticComponent, ReactNode } from "react";
+import type { RootOptions } from "react-dom/client";
 
 export type EventPayload = Readonly<Record<string, unknown>>;
 
@@ -46,6 +47,24 @@ export interface LiveViewReactContextValue {
   readonly removeHandleEvent: RemoveHandleEvent;
   readonly upload: Upload;
   readonly uploadTo: UploadTo;
+}
+
+export interface LiveViewReactRootWrapperContext {
+  readonly children: ReactNode;
+  readonly componentName: string;
+  readonly element: HTMLElement | null;
+}
+
+export type LiveViewReactRootWrapper = (
+  context: LiveViewReactRootWrapperContext,
+) => ReactNode;
+
+export interface LiveViewReactRootOptions {
+  readonly onCaughtError?: NonNullable<RootOptions["onCaughtError"]>;
+  readonly onRecoverableError?: NonNullable<RootOptions["onRecoverableError"]>;
+  readonly onUncaughtError?: NonNullable<RootOptions["onUncaughtError"]>;
+  readonly strictMode?: boolean;
+  readonly wrapRoot?: LiveViewReactRootWrapper;
 }
 
 export type LiveViewReactComponent = ComponentType<any> | ExoticComponent<any>;

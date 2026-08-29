@@ -4,24 +4,44 @@ let mockIdCounter = 0;
 
 export const createMockLiveViewHook = (
   elementAttributes: Record<string, string> = {},
+  targetAttributes: Record<string, string> = {},
 ) => {
-  const id = elementAttributes.id || `mock-${++mockIdCounter}`;
-  const attributes = { ...elementAttributes };
+  const id = Object.hasOwn(elementAttributes, "id")
+    ? elementAttributes.id!
+    : `mock-${++mockIdCounter}`;
+  const attributes: Record<string, string> = {
+    "data-props": "{}",
+    "data-props-kind": "snapshot",
+    "data-streams-kind": "snapshot",
+    ...elementAttributes,
+    id,
+  };
   const target = document.createElement("div");
-  target.innerHTML = attributes["data-ssr"] ? "<div>SSR</div>" : "";
+  target.setAttribute("data-react-target", "");
+  for (const [name, value] of Object.entries(targetAttributes)) {
+    target.setAttribute(name, value);
+  }
 
   const mockElement = {
-    id,
+    get id() {
+      return attributes.id ?? "";
+    },
+    set id(value: string) {
+      attributes.id = value;
+    },
     getAttribute: vi.fn((name: string) =>
       name in attributes ? attributes[name] : null,
     ),
     setAttribute: vi.fn((name: string, value: string) => {
       attributes[name] = value;
     }),
+    removeAttribute: vi.fn((name: string) => {
+      delete attributes[name];
+    }),
     hasAttribute: vi.fn((name: string) => name in attributes),
     hasChildNodes: vi.fn(() => false),
-    querySelector: vi.fn((selector: string) =>
-      selector === "[data-react-target]" ? target : null,
+    querySelectorAll: vi.fn((selector: string) =>
+      selector === ":scope > [data-react-target]" ? [target] : [],
     ),
   };
 

@@ -4,13 +4,21 @@ defmodule LiveViewReact.PropsDiffTest do
   import Phoenix.Component
 
   alias LiveViewReact.Test
+  alias Phoenix.LiveView.Socket
 
   defp render_react_assigns(assigns) do
-    assigns = Map.merge(%{id: "props-test", component: "TestComponent"}, assigns)
+    assigns =
+      Map.merge(
+        %{id: "props-test", component: "TestComponent", socket: connected_socket()},
+        assigns
+      )
+
     rendered = LiveViewReact.react(assigns)
     html = rendered |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
     Test.get_react(html)
   end
+
+  defp connected_socket, do: %Socket{transport_pid: self()}
 
   defp assert_patches_equal(actual, expected) do
     actual_sorted = actual |> decode_patch() |> Enum.sort_by(& &1["path"])
@@ -28,13 +36,13 @@ defmodule LiveViewReact.PropsDiffTest do
   end
 
   describe "props_diff functionality" do
-    test "initial render has empty props_diff and use_diff true" do
-      assigns = %{username: "John", age: 30, socket: nil, __changed__: nil}
+    test "initial render emits a complete snapshot" do
+      assigns = %{username: "John", age: 30, __changed__: nil}
 
       react = render_react_assigns(assigns)
 
       assert react.props == %{"username" => "John", "age" => 30}
-      assert react.use_diff == true
+      assert react.props_kind == "snapshot"
       assert_patches_equal(react.props_diff, [])
     end
 
@@ -43,6 +51,8 @@ defmodule LiveViewReact.PropsDiffTest do
       assigns = assign(assigns, :username, "Jane")
 
       react = render_react_assigns(assigns)
+
+      assert react.props_kind == "patch"
 
       assert_patches_equal(react.props_diff, [
         %{"op" => "replace", "path" => "/username", "value" => "Jane"}
@@ -93,8 +103,22 @@ defmodule LiveViewReact.PropsDiffTest do
 
       react = render_react_assigns(assigns)
 
-      assert react.use_diff == false
+      assert react.props_kind == "snapshot"
       assert react.props == %{"user" => %{"name" => "Jane", "age" => 25}}
+      assert_patches_equal(react.props_diff, [])
+    end
+
+    test "dead render emits all current props instead of a changed subset" do
+      react =
+        render_react_assigns(%{
+          username: "Jane",
+          age: 30,
+          socket: %Socket{},
+          __changed__: %{username: "John"}
+        })
+
+      assert react.props_kind == "snapshot"
+      assert react.props == %{"username" => "Jane", "age" => 30}
       assert_patches_equal(react.props_diff, [])
     end
 

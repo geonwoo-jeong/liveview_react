@@ -7,10 +7,17 @@ defmodule LiveViewReact.ClassificationTest do
 
   alias LiveViewReact.Test
   alias Phoenix.LiveView.LiveStream
+  alias Phoenix.LiveView.Socket
 
   def stream_component(assigns) do
     ~H"""
-    <.react id="stream-component" component="TestComponent" users={@users} title={@title} />
+    <.react
+      id="stream-component"
+      component="TestComponent"
+      socket={@socket}
+      users={@users}
+      title={@title}
+    />
     """
   end
 
@@ -18,7 +25,11 @@ defmodule LiveViewReact.ClassificationTest do
     stream = LiveStream.new(:users, make_ref(), [], [])
 
     html =
-      render_component(&stream_component/1, users: stream, title: "My Page")
+      render_component(&stream_component/1,
+        users: stream,
+        title: "My Page",
+        socket: %Socket{}
+      )
 
     react = Test.get_react(html)
 
