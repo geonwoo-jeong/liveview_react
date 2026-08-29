@@ -1,30 +1,27 @@
-defmodule LiveReact.MixProject do
+defmodule LiveViewReact.MixProject do
   use Mix.Project
 
-  @source_url "https://github.com/mrdotb/live_react"
-  @version "1.1.0"
+  @version "0.1.0"
 
   def project do
     [
-      app: :live_react,
+      app: :liveview_react,
       version: @version,
-      elixir: "~> 1.16",
+      elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :test,
       deps: deps(),
-      description: "E2E reactivity for React and LiveView",
+      description: "React integration for Phoenix LiveView",
       package: package(),
-      docs: docs(),
-      source_url: @source_url
+      docs: docs()
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     conditionals =
-      case Application.get_env(:live_react, :ssr_module) do
+      case Application.get_env(:liveview_react, :ssr_module) do
         # Needed to use :httpc.request
-        LiveReact.SSR.ViteJS -> [:inets]
+        LiveViewReact.SSR.ViteJS -> [:inets]
         _ -> []
       end
 
@@ -33,44 +30,40 @@ defmodule LiveReact.MixProject do
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:jason, "~> 1.2"},
-      {:jsonpatch, "~> 2.3"},
+      {:jason, "~> 1.4"},
+      {:jsonpatch, "~> 2.3.1"},
       {:nodejs, "~> 3.1", optional: true},
-      {:floki, ">= 0.30.0", optional: true},
-      {:ecto, "~> 3.0", optional: true},
-      {:phoenix_ecto, "~> 4.0", optional: true},
-      {:phoenix, ">= 1.7.0"},
-      {:phoenix_html, ">= 3.3.1"},
-      {:phoenix_live_view, ">= 0.18.0"},
-      {:telemetry, "~> 0.4 or ~> 1.0"},
-      {:credo, "~> 1.7", only: [:dev, :test]},
-      {:ex_doc, "~> 0.19", only: :dev, runtime: false},
-      {:git_ops, "~> 2.10.0", only: [:dev]}
+      {:floki, "~> 0.38", optional: true},
+      {:ecto, "~> 3.14", optional: true},
+      {:phoenix_ecto, "~> 4.7", optional: true},
+      {:phoenix, "~> 1.8.13"},
+      {:phoenix_html, "~> 4.3"},
+      {:phoenix_live_view, "~> 1.2.11"},
+      {:telemetry, "~> 1.4"},
+      {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
   end
 
   defp package do
     [
-      maintainers: ["Baptiste Chaleil"],
       licenses: ["MIT"],
       links: %{
-        Github: "https://github.com/mrdotb/live_react"
+        "Upstream project" => "https://github.com/mrdotb/live_react"
       },
       files:
-        ~w(assets/copy assets/js lib)s ++
-          ~w(CHANGELOG.md LICENSE.md mix.exs package.json README.md .formatter.exs)s
+        ~w(dist guides lib)s ++
+          ~w(CHANGELOG.md LICENSE.md README.md THIRD_PARTY_NOTICES.md UPSTREAM.md) ++
+          ~w(mix.exs package.json .formatter.exs)
     ]
   end
 
   defp docs do
     [
-      name: "LiveReact",
+      name: "LiveViewReact",
       source_ref: "v#{@version}",
-      source_url: "https://github.com/mrdotb/live_react",
-      homepage_url: "https://github.com/mrdotb/live_react",
       main: "readme",
       extras: [
         "README.md",
@@ -78,7 +71,10 @@ defmodule LiveReact.MixProject do
         "guides/deployment.md",
         "guides/development.md",
         "guides/ssr.md",
-        "CHANGELOG.md"
+        "CHANGELOG.md",
+        "LICENSE.md",
+        "THIRD_PARTY_NOTICES.md",
+        "UPSTREAM.md"
       ]
     ]
   end

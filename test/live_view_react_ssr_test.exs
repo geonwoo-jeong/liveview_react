@@ -1,0 +1,157 @@
+defmodule LiveViewReact.SSRTest do
+  use ExUnit.Case, async: false
+
+  alias LiveViewReact.SSR
+  alias LiveViewReact.SSR.ViteJS
+
+  @config_keys [:ssr_module, :vite_host, :vite_connect_timeout, :vite_request_timeout]
+
+  defmodule Renderer do
+    @moduledoc false
+    @behaviour SSR
+
+    @impl true
+    def render(%{component: component, props: %{test_pid: test_pid}, slots: slots} = request) do
+      send(test_pid, {:render_request, request})
+
+      "<link rel=\"modulepreload\" href=\"/counter.js\"><!-- preload --><p>#{component}:#{map_size(slots)}</p>"
+    end
+  end
+
+  defmodule InvalidRenderer do
+    @moduledoc false
+    @behaviour SSR
+
+    @impl true
+    def render(_request), do: {:error, :invalid}
+  end
+
+  @doc false
+  def handle_telemetry(event, measurements, metadata, test_pid) do
+    send(test_pid, {:telemetry, event, measurements, metadata})
+  end
+
+  setup_all do
+    {:ok, _started} = Application.ensure_all_started(:inets)
+    :ok
+  end
+
+  setup do
+    previous = Map.new(@config_keys, &{&1, Application.fetch_env(:liveview_react, &1)})
+
+    on_exit(fn ->
+      Enum.each(previous, fn
+        {key, {:ok, value}} -> Application.put_env(:liveview_react, key, value)
+        {key, :error} -> Application.delete_env(:liveview_react, key)
+      end)
+    end)
+  end
+
+  test "passes one request object to the configured renderer and emits canonical telemetry" do
+    Application.put_env(:liveview_react, :ssr_module, Renderer)
+    handler_id = "ssr-test-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:liveview_react, :ssr, :stop],
+        &__MODULE__.handle_telemetry/4,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    request = %{
+      component: "Counter",
+      props: %{count: 1, test_pid: self()},
+      slots: %{"default" => "Count"}
+    }
+
+    assert SSR.render(request) == %{
+             preloadLinks: "<link rel=\"modulepreload\" href=\"/counter.js\">",
+             html: "<p>Counter:1</p>"
+           }
+
+    assert_receive {:render_request, ^request}
+
+    assert_receive {:telemetry, [:liveview_react, :ssr, :stop], measurements,
+                    %{component: "Counter"}}
+
+    assert is_integer(measurements.duration)
+  end
+
+  test "raises when SSR is not configured" do
+    Application.delete_env(:liveview_react, :ssr_module)
+
+    assert_raise SSR.NotConfigured, fn ->
+      SSR.render(%{component: "Counter", props: %{}, slots: %{}})
+    end
+  end
+
+  test "rejects invalid renderer responses" do
+    Application.put_env(:liveview_react, :ssr_module, InvalidRenderer)
+
+    assert_raise SSR.RenderError, ~r/invalid response/, fn ->
+      SSR.render(%{component: "Counter", props: %{}, slots: %{}})
+    end
+  end
+
+  describe "Vite request bounds" do
+    test "rejects a non-positive connect timeout before issuing a request" do
+      Application.put_env(:liveview_react, :vite_host, "http://127.0.0.1:1")
+      Application.put_env(:liveview_react, :vite_connect_timeout, 0)
+
+      assert_raise SSR.RenderError,
+                   "Invalid LiveViewReact vite_connect_timeout configuration: " <>
+                     "expected a positive integer in milliseconds",
+                   fn -> ViteJS.render(%{component: "Counter", props: %{}, slots: %{}}) end
+    end
+
+    test "rejects a non-integer request timeout before issuing a request" do
+      Application.put_env(:liveview_react, :vite_host, "http://127.0.0.1:1")
+      Application.put_env(:liveview_react, :vite_request_timeout, "5000")
+
+      assert_raise SSR.RenderError,
+                   "Invalid LiveViewReact vite_request_timeout configuration: " <>
+                     "expected a positive integer in milliseconds",
+                   fn -> ViteJS.render(%{component: "Counter", props: %{}, slots: %{}}) end
+    end
+
+    test "converts a bounded request timeout into a safe render error" do
+      {host, server} = start_hanging_server()
+      Application.put_env(:liveview_react, :vite_host, host)
+      Application.put_env(:liveview_react, :vite_connect_timeout, 500)
+      Application.put_env(:liveview_react, :vite_request_timeout, 25)
+
+      on_exit(fn -> send(server, :close) end)
+
+      assert_raise SSR.RenderError, "Vite SSR request timed out after 25 ms", fn ->
+        ViteJS.render(%{component: "Counter", props: %{}, slots: %{}})
+      end
+    end
+  end
+
+  defp start_hanging_server do
+    {:ok, listener} =
+      :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+    {:ok, {{127, 0, 0, 1}, port}} = :inet.sockname(listener)
+
+    server =
+      spawn(fn ->
+        {:ok, socket} = :gen_tcp.accept(listener)
+        {:ok, _request} = :gen_tcp.recv(socket, 0, 1_000)
+
+        receive do
+          :close -> :ok
+        after
+          1_000 -> :ok
+        end
+
+        :gen_tcp.close(socket)
+        :gen_tcp.close(listener)
+      end)
+
+    {"http://127.0.0.1:#{port}", server}
+  end
+end

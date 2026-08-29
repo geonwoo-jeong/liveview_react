@@ -1,7 +1,7 @@
-defmodule LiveReactPatchTest do
+defmodule LiveViewReact.PatchTest do
   use ExUnit.Case
 
-  alias LiveReact.Patch
+  alias LiveViewReact.Patch
 
   describe "values" do
     test "round-trips nil" do

@@ -1,6 +1,6 @@
-defmodule LiveReact.Patch do
+defmodule LiveViewReact.Patch do
   @moduledoc """
-  Encodes LiveReact patch operations into the compact wire format used by
+  Encodes LiveViewReact patch operations into the compact wire format used by
   `data-props-diff` and `data-streams-diff`.
 
   The payload is a concatenated sequence of operations. Dynamic text fields are
@@ -196,7 +196,7 @@ defmodule LiveReact.Patch do
 
   defp take_js_string(original, <<codepoint::utf8, rest::binary>>, remaining, bytes) do
     units = js_code_units(codepoint)
-    if units > remaining, do: raise(ArgumentError, "Invalid LiveReact patch length prefix")
+    if units > remaining, do: raise(ArgumentError, "Invalid LiveViewReact patch length prefix")
     take_js_string(original, rest, remaining - units, bytes + utf8_byte_size(codepoint))
   end
 

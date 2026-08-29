@@ -1,7 +1,8 @@
-defmodule LiveReact.Slots do
+defmodule LiveViewReact.Slots do
   @moduledoc false
 
   import Phoenix.Component
+  alias Phoenix.HTML.Safe
 
   @doc false
   def rendered_slot_map(assigns) do
@@ -31,7 +32,7 @@ defmodule LiveReact.Slots do
       <%= render_slot(@slot) %>
     <% end %>
     """
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> List.to_string()
     |> String.trim()
   end

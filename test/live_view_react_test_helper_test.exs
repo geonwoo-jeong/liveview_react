@@ -1,15 +1,15 @@
-defmodule LiveReactTestHelperTest do
+defmodule LiveViewReact.TestHelperTest do
   use ExUnit.Case
 
-  import LiveReact
+  import LiveViewReact
   import Phoenix.Component
   import Phoenix.LiveViewTest
 
-  alias LiveReact.Test
+  alias LiveViewReact.Test
 
   def component(assigns) do
     ~H"""
-    <.react name="TestComponent" title="Hello" />
+    <.react id="helper-test" component="TestComponent" title="Hello" />
     """
   end
 
