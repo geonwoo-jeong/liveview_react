@@ -365,7 +365,7 @@ describe("useLiveForm", () => {
       });
       expect(captured.current?.validating).toBe(true);
 
-      let submitPromise!: Promise<SubmitReply | undefined>;
+      let submitPromise!: Promise<SubmitReply>;
       await act(async () => {
         submitPromise = captured.current!.submit();
       });
@@ -439,7 +439,7 @@ describe("useLiveForm", () => {
       );
       expect(captured.current?.submitReply).toBeUndefined();
 
-      let submitPromise!: Promise<SubmitReply | undefined>;
+      let submitPromise!: Promise<SubmitReply>;
       await act(async () => {
         submitPromise = captured.current!.submit();
       });

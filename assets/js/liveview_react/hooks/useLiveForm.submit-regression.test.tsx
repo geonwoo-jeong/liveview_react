@@ -170,7 +170,7 @@ describe("useLiveForm submit events", () => {
       );
 
       let settlementCount = 0;
-      let submitPromise!: Promise<SubmitReply | undefined>;
+      let submitPromise!: Promise<SubmitReply>;
       await act(async () => {
         submitPromise = captured.current!.submit().then((reply) => {
           settlementCount += 1;

@@ -55,16 +55,16 @@ export interface PendingLiveFormValidation<TValues extends LiveFormValues> {
 export interface ActiveLiveFormSubmit<TSubmitReply> {
   readonly formId: string;
   readonly formName: string;
-  readonly promise: Promise<TSubmitReply | undefined> | null;
+  readonly promise: Promise<TSubmitReply> | null;
   readonly reject: ((reason: unknown) => void) | null;
-  readonly resolve: ((reply: TSubmitReply | undefined) => void) | null;
+  readonly resolve: ((reply: TSubmitReply) => void) | null;
   readonly revision: number;
   readonly started: boolean;
 }
 
 export interface LiveFormSubmitSettlement<TSubmitReply> {
   readonly active: ActiveLiveFormSubmit<TSubmitReply>;
-  readonly reply: TSubmitReply | undefined;
+  readonly reply: TSubmitReply;
 }
 
 export interface LiveFormServerReconciliation {
@@ -163,7 +163,7 @@ export function settleLiveFormSubmitState<
   TSubmitReply,
 >(
   state: LiveFormState<TValues, TSubmitReply>,
-  reply: TSubmitReply | undefined,
+  reply: TSubmitReply,
 ): LiveFormState<TValues, TSubmitReply> {
   return Object.freeze({
     ...state,
@@ -251,8 +251,8 @@ export function createLiveFormValidationPayload<TValues extends LiveFormValues>(
 
 export function rejectLiveFormSubmit<TSubmitReply>(
   reason: unknown,
-): Promise<TSubmitReply | undefined> {
-  const promise = Promise.reject<TSubmitReply | undefined>(reason);
+): Promise<TSubmitReply> {
+  const promise = Promise.reject<TSubmitReply>(reason);
   void promise.catch(() => undefined);
   return promise;
 }

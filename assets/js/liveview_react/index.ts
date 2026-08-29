@@ -56,6 +56,7 @@ export type {
   LiveFormRequired,
   LiveFormRevisionInputProps,
   LiveFormServerSnapshot,
+  LiveFormSubmitEvent,
   LiveFormValues,
 } from "./forms";
 export type {
