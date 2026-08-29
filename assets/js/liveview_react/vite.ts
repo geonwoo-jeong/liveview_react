@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Plugin } from "vite";
+import type { Plugin, ViteDevServer } from "vite";
 
 import {
   assertNoEventPropCollisions,
@@ -7,8 +7,19 @@ import {
 } from "./runtime/event-callbacks";
 import { validateSlotBindings } from "./runtime/slots";
 import type { ServerRenderRequest } from "./server";
+import {
+  COMPONENTS_VIRTUAL_MODULE_ID,
+  generateComponentRegistry,
+  isPotentialComponentFile,
+  RESOLVED_COMPONENTS_VIRTUAL_MODULE_ID,
+  resolveComponentDirectory,
+} from "./vite/component-registry";
 
 const DEFAULT_MAX_BODY_BYTES = 1_048_576;
+const DEFAULT_COMPONENT_DIRECTORY = "./react-components";
+const GENERIC_RENDER_ERROR_MESSAGE = "SSR rendering failed";
+const JSON_CONTENT_TYPE_PATTERN =
+  /^application\/json(?:[ \t]*;[ \t]*charset[ \t]*=[ \t]*[!#$%&'*+\-.^_`|~0-9A-Za-z]+)?$/i;
 const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
   "component",
   "events",
@@ -18,9 +29,17 @@ const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
 ]);
 
 export interface LiveViewReactPluginOptions {
+  readonly componentDirectory?: string;
   readonly entrypoint?: string;
   readonly maxBodyBytes?: number;
   readonly path?: string;
+}
+
+interface ValidatedPluginOptions {
+  readonly componentDirectory: string;
+  readonly entrypoint: string;
+  readonly maxBodyBytes: number;
+  readonly path: string;
 }
 
 class RequestError extends Error {
@@ -33,11 +52,107 @@ class RequestError extends Error {
   }
 }
 
-function hotUpdateType(path: string | null): "css-update" | "js-update" | null {
-  if (!path) return null;
-  if (path.endsWith(".css")) return "css-update";
-  if (/\.[cm]?[jt]sx?$/.test(path)) return "js-update";
-  return null;
+function assertJsonContentType(request: IncomingMessage): void {
+  const contentType = request.headers["content-type"];
+  if (
+    typeof contentType !== "string" ||
+    !JSON_CONTENT_TYPE_PATTERN.test(contentType.trim())
+  ) {
+    throw new RequestError(
+      415,
+      "Content-Type must be application/json with an optional charset parameter",
+    );
+  }
+}
+
+const PLUGIN_OPTION_NAMES: ReadonlySet<string> = new Set([
+  "componentDirectory",
+  "entrypoint",
+  "maxBodyBytes",
+  "path",
+]);
+
+function validatePluginOptions(options: unknown): ValidatedPluginOptions {
+  if (
+    typeof options !== "object" ||
+    options === null ||
+    Array.isArray(options) ||
+    (Object.getPrototypeOf(options) !== Object.prototype &&
+      Object.getPrototypeOf(options) !== null)
+  ) {
+    throw new TypeError("liveViewReactPlugin options must be a plain object");
+  }
+
+  const values = new Map<string, unknown>();
+  for (const key of Reflect.ownKeys(options)) {
+    if (typeof key !== "string") {
+      throw new TypeError("liveViewReactPlugin option keys must be strings");
+    }
+    if (!PLUGIN_OPTION_NAMES.has(key)) {
+      throw new TypeError(
+        `Unknown liveViewReactPlugin option ${JSON.stringify(key)}`,
+      );
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(options, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(
+        `liveViewReactPlugin option ${JSON.stringify(key)} must be an enumerable data property`,
+      );
+    }
+    values.set(key, descriptor.value);
+  }
+
+  const componentDirectory =
+    values.get("componentDirectory") === undefined
+      ? DEFAULT_COMPONENT_DIRECTORY
+      : values.get("componentDirectory");
+  const entrypoint =
+    values.get("entrypoint") === undefined
+      ? "./js/server.ts"
+      : values.get("entrypoint");
+  const maxBodyBytes =
+    values.get("maxBodyBytes") === undefined
+      ? DEFAULT_MAX_BODY_BYTES
+      : values.get("maxBodyBytes");
+  const path =
+    values.get("path") === undefined ? "/ssr_render" : values.get("path");
+
+  if (
+    typeof componentDirectory !== "string" ||
+    componentDirectory.trim().length === 0 ||
+    componentDirectory.includes("\0")
+  ) {
+    throw new TypeError("componentDirectory must be a non-empty path string");
+  }
+  if (
+    typeof entrypoint !== "string" ||
+    entrypoint.trim().length === 0 ||
+    entrypoint.includes("\0")
+  ) {
+    throw new TypeError("entrypoint must be a non-empty module id string");
+  }
+  if (!Number.isSafeInteger(maxBodyBytes) || (maxBodyBytes as number) <= 0) {
+    throw new TypeError("maxBodyBytes must be a positive safe integer");
+  }
+  if (
+    typeof path !== "string" ||
+    !path.startsWith("/") ||
+    path.includes("?") ||
+    path.includes("#") ||
+    path.includes("\0")
+  ) {
+    throw new TypeError(
+      "path must be an absolute URL path without a query, fragment, or null byte",
+    );
+  }
+
+  return Object.freeze({
+    componentDirectory,
+    entrypoint,
+    maxBodyBytes: maxBodyBytes as number,
+    path,
+  });
 }
 
 function jsonResponse(
@@ -186,55 +301,87 @@ function resolveRenderer(
   ) => string | Promise<string>;
 }
 
+function configureComponentRegistryInvalidation(
+  server: ViteDevServer,
+  componentDirectory: string,
+): void {
+  server.watcher.add(componentDirectory);
+
+  const invalidate = (file: string): void => {
+    if (!isPotentialComponentFile(componentDirectory, file)) return;
+
+    const virtualModule = server.moduleGraph.getModuleById(
+      RESOLVED_COMPONENTS_VIRTUAL_MODULE_ID,
+    );
+    if (!virtualModule) return;
+
+    server.moduleGraph.invalidateModule(
+      virtualModule,
+      new Set(),
+      Date.now(),
+      true,
+    );
+    server.ws.send({ type: "full-reload" });
+  };
+
+  const cleanup = (): void => {
+    server.watcher.off("add", invalidate);
+    server.watcher.off("unlink", invalidate);
+    server.watcher.off("close", cleanup);
+    server.httpServer?.off("close", cleanup);
+  };
+
+  server.watcher.on("add", invalidate);
+  server.watcher.on("unlink", invalidate);
+  server.watcher.once("close", cleanup);
+  server.httpServer?.once("close", cleanup);
+}
+
 export function liveViewReactPlugin(
   options: LiveViewReactPluginOptions = {},
 ): Plugin {
-  const path = options.path ?? "/ssr_render";
-  const entrypoint = options.entrypoint ?? "./js/server.ts";
-  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
-
-  if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes <= 0) {
-    throw new TypeError("maxBodyBytes must be a positive safe integer");
-  }
+  const { componentDirectory, entrypoint, maxBodyBytes, path } =
+    validatePluginOptions(options);
+  let resolvedViteRoot: string | null = null;
 
   return {
     name: "liveview-react",
 
-    handleHotUpdate({ file, modules, server, timestamp }) {
-      if (!/\.(heex|ex)$/.test(file)) return;
+    configResolved(config) {
+      resolveComponentDirectory(config.root, componentDirectory);
+      resolvedViteRoot = config.root;
+    },
 
-      const invalidatedModules = new Set<(typeof modules)[number]>();
-      for (const module of modules) {
-        server.moduleGraph.invalidateModule(
-          module,
-          invalidatedModules,
-          timestamp,
-          true,
+    resolveId(source) {
+      if (source === COMPONENTS_VIRTUAL_MODULE_ID) {
+        return RESOLVED_COMPONENTS_VIRTUAL_MODULE_ID;
+      }
+      return null;
+    },
+
+    async load(id) {
+      if (id !== RESOLVED_COMPONENTS_VIRTUAL_MODULE_ID) return null;
+      if (!resolvedViteRoot) {
+        throw new Error(
+          `Vite config must be resolved before loading ${JSON.stringify(COMPONENTS_VIRTUAL_MODULE_ID)}`,
         );
       }
 
-      const updates = Array.from(invalidatedModules).flatMap((module) => {
-        const type = hotUpdateType(module.file);
-        if (!type) return [];
-
-        return [
-          {
-            type,
-            path: module.url,
-            acceptedPath: module.url,
-            timestamp,
-          },
-        ];
-      });
-
-      if (updates.length > 0) {
-        server.ws.send({ type: "update", updates });
-      }
-
-      return [];
+      const registry = await generateComponentRegistry(
+        resolveComponentDirectory(resolvedViteRoot, componentDirectory),
+      );
+      for (const file of registry.files) this.addWatchFile(file);
+      return registry.code;
     },
 
     configureServer(server) {
+      if (resolvedViteRoot) {
+        configureComponentRegistryInvalidation(
+          server,
+          resolveComponentDirectory(resolvedViteRoot, componentDirectory),
+        );
+      }
+
       server.middlewares.use(async (request, response, next) => {
         const requestPath = request.url?.split("?", 1)[0];
         if (request.method !== "POST" || requestPath !== path) {
@@ -243,6 +390,7 @@ export function liveViewReactPlugin(
         }
 
         try {
+          assertJsonContentType(request);
           const body = await readJsonBody(request, maxBodyBytes);
           const renderRequest = parseRenderRequest(body);
           const loadedModule = await server.ssrLoadModule(entrypoint);
@@ -264,7 +412,7 @@ export function liveViewReactPlugin(
           server.ssrFixStacktrace(reason);
           server.config.logger.error(reason.stack ?? reason.message);
           jsonResponse(response, 500, {
-            error: { message: reason.message },
+            error: { message: GENERIC_RENDER_ERROR_MESSAGE },
           });
         }
       });
