@@ -1,4 +1,4 @@
-import { act, useEffect, useState, type ReactNode } from "react";
+import { act, memo, useEffect, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLiveViewReact } from "../context";
@@ -6,6 +6,7 @@ import type {
   LiveViewReactContextValue,
   LiveViewReactRootOptions,
 } from "../types";
+import { applyPatch } from "../transport/jsonPatch";
 import { RootController, type RootRenderSnapshot } from "./root";
 
 function createContext(element: HTMLElement): LiveViewReactContextValue {
@@ -74,6 +75,49 @@ describe("RootController", () => {
     await act(async () => controller.update(snapshot({ label: "second" })));
 
     expect(target.textContent).toBe("second:1");
+    await act(async () => controller.destroy());
+  });
+
+  it("preserves unchanged prop references so React.memo skips child work", async () => {
+    const childRender = vi.fn();
+    const stable = { label: "stable" };
+    const initialProps = { dynamic: { count: 1 }, stable };
+    const nextProps = applyPatch(initialProps, [
+      { op: "replace", path: "/dynamic/count", value: 2 },
+    ]);
+
+    const MemoChild = memo(function MemoChild({
+      value,
+    }: {
+      value: typeof stable;
+    }) {
+      childRender();
+      return <span>{value.label}</span>;
+    });
+
+    function Parent({
+      dynamic,
+      stable: stableValue,
+    }: {
+      readonly dynamic: { readonly count: number };
+      readonly stable: typeof stable;
+    }) {
+      return (
+        <div>
+          <MemoChild value={stableValue} />
+          <output>{dynamic.count}</output>
+        </div>
+      );
+    }
+
+    const target = document.createElement("div");
+    const controller = createController(target, snapshot(initialProps));
+
+    await act(async () => controller.mount(Parent));
+    await act(async () => controller.update(snapshot(nextProps)));
+
+    expect(target.querySelector("output")?.textContent).toBe("2");
+    expect(childRender).toHaveBeenCalledTimes(1);
     await act(async () => controller.destroy());
   });
 

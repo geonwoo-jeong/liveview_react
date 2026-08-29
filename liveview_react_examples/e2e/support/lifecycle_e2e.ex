@@ -41,6 +41,7 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
           component="E2ELifecycleProbe"
           label="a"
           queuedItems={@queued_items}
+          recoveryPadding={@recovery_padding}
           serverVersion={@server_a}
           socket={@socket}
         />
@@ -95,13 +96,18 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
       is_integer(reconnect_mounts) and reconnect_mounts > 0 and
         connect_params["e2e_queued_patch"] == true
 
+    reconnect_with_recovery_seed? =
+      is_integer(reconnect_mounts) and reconnect_mounts > 0 and
+        connect_params["e2e_recovery_seed"] == true
+
     if reconnect_with_queued_patch?, do: send(self(), :apply_queued_reconnect_patch)
 
     {:ok,
      assign(socket,
-       server_a: 0,
+       server_a: if(reconnect_with_recovery_seed?, do: 41, else: 0),
        server_b: 0,
        queued_items: [],
+       recovery_padding: String.duplicate("stable", 100),
        delayed_version: 0,
        removal_sequence: 0,
        show_b: true,

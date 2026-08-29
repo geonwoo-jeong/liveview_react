@@ -20,6 +20,7 @@ defmodule LiveViewReact do
 
   @ssr_default Application.compile_env(:liveview_react, :ssr, true)
   @diff_default Application.compile_env(:liveview_react, :enable_props_diff, true)
+  @transport_version 1
   @reserved_assigns ~w(id component ssr diff socket __changed__ __given__)a
 
   @doc """
@@ -41,7 +42,8 @@ defmodule LiveViewReact do
     <div
       id={@id}
       data-component={@component}
-      data-props={Patch.encode_object(Encoder.encode(@props, []))}
+      data-liveview-react-version={@transport_version}
+      data-props={@props_payload}
       data-props-kind={@props_kind}
       data-props-diff={@props_diff}
       data-streams-diff={@streams_diff}
@@ -100,20 +102,14 @@ defmodule LiveViewReact do
   # Builds the assigns consumed by the template: props, diffs, slots and SSR output.
   defp prepare_assigns(assigns, flags) do
     transport_snapshot? = flags.init or flags.dead
-    props_snapshot? = transport_snapshot? or not flags.diff
+    changed_assigns = Enum.filter(assigns, fn {key, _value} -> key_changed(assigns, key) end)
+    stream_assigns = if transport_snapshot?, do: assigns, else: changed_assigns
 
-    base_assigns =
-      if props_snapshot? do
-        assigns
-      else
-        Enum.filter(assigns, fn {key, _value} -> key_changed(assigns, key) end)
-      end
-
-    {props, _} = extract(base_assigns, assigns, :props)
-    {streams, _} = extract(base_assigns, assigns, :streams)
+    {raw_props, _} = extract(assigns, assigns, :props)
+    props = Encoder.encode(raw_props, [])
+    props_transport = build_props_transport(props, assigns, transport_snapshot? or not flags.diff)
+    {streams, _} = extract(stream_assigns, assigns, :streams)
     {slots, slots_changed?} = extract(assigns, assigns, :slots)
-
-    props_diff = if props_snapshot?, do: [], else: calculate_props_diff(props, assigns)
 
     streams_diff =
       if flags.streams_diff,
@@ -122,17 +118,34 @@ defmodule LiveViewReact do
 
     assigns
     |> Map.put(:props, props)
-    |> Map.put(:props_kind, transport_kind(props_snapshot?))
-    |> Map.put(:props_diff, Patch.serialize(props_diff))
+    |> Map.put(:transport_version, @transport_version)
+    |> Map.put(:props_payload, props_transport.snapshot)
+    |> Map.put(:props_kind, props_transport.kind)
+    |> Map.put(:props_diff, props_transport.patch)
     |> Map.put(:streams_diff, Patch.serialize(streams_diff))
     |> Map.put(:streams_kind, transport_kind(transport_snapshot?))
     |> Map.put(:slots, if(slots_changed?, do: Slots.rendered_slot_map(slots), else: %{}))
     |> put_ssr_render(flags)
-    |> mark_computed_changed(flags, slots_changed?, transport_snapshot?)
+    |> mark_computed_changed(flags, slots_changed?)
   end
 
   defp transport_kind(true), do: "snapshot"
   defp transport_kind(false), do: "patch"
+
+  defp build_props_transport(props, _assigns, true) do
+    %{kind: "snapshot", snapshot: Patch.encode_object(props), patch: ""}
+  end
+
+  defp build_props_transport(props, assigns, false) do
+    snapshot = Patch.encode_object(props)
+    patch = assigns |> calculate_props_diff(props) |> Patch.serialize()
+
+    if byte_size(patch) < byte_size(snapshot) do
+      %{kind: "patch", snapshot: nil, patch: patch}
+    else
+      %{kind: "snapshot", snapshot: snapshot, patch: ""}
+    end
+  end
 
   defp put_ssr_render(assigns, %{ssr: true}) do
     request = ssr_request(assigns)
@@ -156,17 +169,16 @@ defmodule LiveViewReact do
   end
 
   # Marks the assigns we computed ourselves as changed so LiveView diffs them.
-  defp mark_computed_changed(assigns, flags, slots_changed?, transport_snapshot?) do
-    full_props? = flags.init or flags.dead or not flags.diff
-
+  defp mark_computed_changed(assigns, flags, slots_changed?) do
     computed_changed = %{
-      props: full_props?,
+      transport_version: flags.init,
+      props_payload: true,
       props_kind: true,
       slots: slots_changed?,
       ssr_render: flags.ssr,
       hydration_descriptor: flags.ssr,
-      props_diff: not full_props?,
-      streams_diff: flags.streams_diff or transport_snapshot?,
+      props_diff: true,
+      streams_diff: true,
       streams_kind: true
     }
 
@@ -176,33 +188,42 @@ defmodule LiveViewReact do
     end)
   end
 
-  # Calculates minimal JSON Patch operations for changed props only.
-  # Uses Phoenix LiveView's __changed__ tracking to identify what props have changed.
-  defp calculate_props_diff(props, %{__changed__: changed}) do
-    props
-    |> Enum.flat_map(fn {k, new_value} ->
-      case changed[k] do
-        nil ->
-          []
+  # Uses LiveView change tracking without adding a second server-side state store.
+  # `add` is intentional for unknown/nil old values: for object properties it is
+  # valid for both insertion and replacement, so an explicit nil prop is retained.
+  defp calculate_props_diff(%{__changed__: changed}, props) do
+    changed
+    |> Enum.sort_by(fn {key, _old_value} -> to_string(key) end)
+    |> Enum.flat_map(fn {key, old_value} ->
+      case Map.fetch(props, key) do
+        {:ok, new_value} ->
+          diff_changed_prop(pointer_path(key), old_value, new_value)
 
-        true ->
-          [%{op: "replace", path: "/#{k}", value: Encoder.encode(new_value, [])}]
-
-        old_value ->
-          Jsonpatch.diff(old_value, new_value,
-            ancestor_path: "/#{k}",
-            prepare_map: fn
-              struct when is_struct(struct) -> Encoder.encode(struct, [])
-              rest -> rest
-            end,
-            object_hash: &object_hash/1
-          )
+        :error ->
+          if normalize_key(key, old_value) == :props,
+            do: [%{op: "remove", path: pointer_path(key)}],
+            else: []
       end
     end)
-    |> then(fn diff -> [%{op: "test", path: "", value: :rand.uniform(10_000_000)} | diff] end)
   end
 
-  defp object_hash(%{id: id}), do: id
+  defp diff_changed_prop(path, old_value, new_value) when old_value in [nil, true] do
+    [%{op: "add", path: path, value: new_value}]
+  end
+
+  defp diff_changed_prop(path, old_value, new_value) do
+    old_value
+    |> Encoder.encode([])
+    |> Jsonpatch.diff(new_value, ancestor_path: path, object_hash: &object_hash/1)
+  end
+
+  defp pointer_path(key) do
+    escaped = key |> to_string() |> String.replace("~", "~0") |> String.replace("/", "~1")
+    "/" <> escaped
+  end
+
+  defp object_hash(%{id: id}) when not is_nil(id), do: id
+  defp object_hash(%{"id" => id}) when not is_nil(id), do: id
   defp object_hash(_), do: nil
 
   # Generates JSON patch operations for LiveStream changes.
@@ -211,15 +232,13 @@ defmodule LiveViewReact do
 
   defp calculate_streams_diff(streams, true) do
     # for initial render, we want to reset all streams, and then apply the diffs
-    init = Enum.map(streams, fn {k, _} -> %{op: "replace", path: "/#{k}", value: []} end)
+    init = Enum.map(streams, fn {k, _} -> %{op: "add", path: "/#{k}", value: []} end)
     diffs = Enum.flat_map(streams, fn {k, stream} -> generate_stream_patches(k, stream) end)
     init ++ diffs
   end
 
   defp calculate_streams_diff(streams, false) do
-    streams
-    |> Enum.flat_map(fn {k, stream} -> generate_stream_patches(k, stream) end)
-    |> then(fn diff -> [%{op: "test", path: "", value: :rand.uniform(10_000_000)} | diff] end)
+    Enum.flat_map(streams, fn {k, stream} -> generate_stream_patches(k, stream) end)
   end
 
   # Generates JSON patch operations for a single LiveStream's changes.
@@ -282,12 +301,12 @@ defmodule LiveViewReact do
   defp normalize_key(_key, _val), do: :props
 
   defp key_changed(%{__changed__: nil}, _key), do: true
-  defp key_changed(%{__changed__: changed}, key), do: changed[key] != nil
+  defp key_changed(%{__changed__: changed}, key), do: Map.has_key?(changed, key)
 
   defp ssr_request(assigns) do
     %{
       component: assigns.component,
-      props: Encoder.encode(assigns.props, []),
+      props: assigns.props,
       slots: assigns.slots
     }
   end

@@ -13,6 +13,7 @@ let audit = Object.freeze({
     activeListeners: 0,
     deliveries: 0,
   }),
+  transport: Object.freeze({ corruptions: 0 }),
   hookCallbacks: Object.freeze([]),
 });
 
@@ -21,6 +22,7 @@ let pendingLazy = Object.freeze({
   destroy: Object.freeze([]),
 });
 let tracedRootId = null;
+let corruptPropsRootId = null;
 
 function replaceProbe(label, update) {
   const current = audit.probes[label] ?? emptyProbe;
@@ -67,6 +69,33 @@ function startReconnectTrace(rootId) {
   });
 }
 
+function corruptNextPropsPatch(rootId) {
+  if (typeof rootId !== "string" || rootId.length === 0) {
+    throw new TypeError("Patch corruption requires a non-empty root id");
+  }
+
+  corruptPropsRootId = rootId;
+}
+
+function applyScheduledCorruption(lifecycle, element) {
+  if (
+    lifecycle !== "updated" ||
+    element.id !== corruptPropsRootId ||
+    element.getAttribute("data-props-kind") !== "patch"
+  ) {
+    return;
+  }
+
+  corruptPropsRootId = null;
+  element.setAttribute("data-props-diff", "r999:/corrupted");
+  audit = Object.freeze({
+    ...audit,
+    transport: Object.freeze({
+      corruptions: audit.transport.corruptions + 1,
+    }),
+  });
+}
+
 function recordHookCallback(lifecycle, element) {
   if (element.id !== tracedRootId) return;
 
@@ -104,12 +133,18 @@ async function resolveLazy(gate) {
 if (__LIVEVIEW_REACT_E2E__ && typeof window !== "undefined") {
   Object.defineProperty(window, "__liveViewReactE2E", {
     configurable: true,
-    value: Object.freeze({ resolveLazy, snapshot, startReconnectTrace }),
+    value: Object.freeze({
+      corruptNextPropsPatch,
+      resolveLazy,
+      snapshot,
+      startReconnectTrace,
+    }),
   });
 }
 
 function wrapHookCallback(hook, lifecycle) {
   return function (...args) {
+    applyScheduledCorruption(lifecycle, this.el);
     recordHookCallback(lifecycle, this.el);
     return hook[lifecycle].apply(this, args);
   };

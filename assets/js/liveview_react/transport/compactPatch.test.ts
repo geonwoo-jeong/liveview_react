@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { decodeCompactPatch } from "./compactPatch";
+
+import { decodeCompactJson, decodeCompactPatch } from "./compactPatch";
 
 describe("decodeCompactPatch", () => {
-  it("decodes scalar add, replace, remove, and nonce operations", () => {
+  it("decodes scalar add, replace, and remove operations", () => {
     expect(
-      decodeCompactPatch("n123r6:/countn1:6a8:/items/3s1:dd8:/items/0"),
+      decodeCompactPatch("r6:/countn1:6a8:/items/3s1:dd8:/items/0"),
     ).toEqual([
       { op: "replace", path: "/count", value: 6 },
       { op: "add", path: "/items/3", value: "d" },
@@ -12,13 +13,7 @@ describe("decodeCompactPatch", () => {
     ]);
   });
 
-  it("decodes caret-encoded JSON values", () => {
-    expect(decodeCompactPatch("a5:/rowsJ25:{^id^:3,^name^:^Charlie^}")).toEqual(
-      [{ op: "add", path: "/rows", value: { id: 3, name: "Charlie" } }],
-    );
-  });
-
-  it("decodes escaped caret JSON values", () => {
+  it("decodes caret-encoded JSON and escaped transport characters", () => {
     expect(
       decodeCompactPatch("a5:/metaJ27:{^tilde^:^~~^,^caret^:^~^^}"),
     ).toEqual([
@@ -35,7 +30,7 @@ describe("decodeCompactPatch", () => {
     ]);
   });
 
-  it("decodes null, booleans, floats, upsert, and limit", () => {
+  it("decodes null, booleans, numbers, upsert, and limit", () => {
     expect(
       decodeCompactPatch(
         "r6:/titlezu6:/itemsJ8:{^id^:1}l6:/itemsn2:-3r5:/flagb0r6:/pricen4:22.5",
@@ -49,8 +44,31 @@ describe("decodeCompactPatch", () => {
     ]);
   });
 
-  it("returns an empty array for a null or empty payload", () => {
+  it("returns a frozen empty array for a null or empty payload", () => {
     expect(decodeCompactPatch(null)).toEqual([]);
     expect(decodeCompactPatch("")).toEqual([]);
+    expect(Object.isFrozen(decodeCompactPatch(""))).toBe(true);
+  });
+
+  it.each([
+    ["unknown operation", "x0:"],
+    ["missing length", "r:/x"],
+    ["truncated path", "r9:/x"],
+    ["truncated value", "r2:/xs9:x"],
+    ["invalid boolean", "r2:/xb2"],
+    ["invalid number", "r2:/xn3:nan"],
+    ["non-finite number", "r2:/xn5:1e999"],
+    ["unknown value tag", "r2:/xq"],
+    ["unsafe length", `r${"9".repeat(32)}:/x`],
+  ])("rejects a malformed payload: %s", (_label, payload) => {
+    expect(() => decodeCompactPatch(payload)).toThrow();
+  });
+});
+
+describe("decodeCompactJson", () => {
+  it("rejects non-canonical escape sequences", () => {
+    expect(() => decodeCompactJson("{^value^:^~x^}")).toThrow(
+      "Invalid LiveViewReact compact JSON escape",
+    );
   });
 });

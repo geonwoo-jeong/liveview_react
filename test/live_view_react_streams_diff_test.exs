@@ -40,7 +40,7 @@ defmodule LiveViewReact.StreamsDiffTest do
 
   defmodule StreamUser do
     @moduledoc false
-    @derive LiveViewReact.Encoder
+    @derive {LiveViewReact.Encoder, only: [:id, :name, :age]}
     defstruct [:id, :name, :age]
   end
 
@@ -56,7 +56,7 @@ defmodule LiveViewReact.StreamsDiffTest do
       react = render_react_assigns(%{users: stream, __changed__: nil})
 
       expected_patches = [
-        %{"op" => "replace", "path" => "/users", "value" => []},
+        %{"op" => "add", "path" => "/users", "value" => []},
         %{
           "op" => "upsert",
           "path" => "/users/-",

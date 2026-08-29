@@ -25,17 +25,23 @@ defmodule LiveViewReact.EncoderTest do
       nested = %{user: %{name: "John", age: 30}, items: [1, 2, 3]}
       assert Encoder.encode(nested, []) == nested
     end
+
+    test "rejects values that cannot be represented as JSON" do
+      assert_raise Protocol.UndefinedError, ~r/JSON-compatible values/, fn ->
+        Encoder.encode({:not, :json}, [])
+      end
+    end
   end
 
   defmodule TestUser do
     @moduledoc false
-    @derive Encoder
+    @derive {Encoder, only: [:name, :age, :email]}
     defstruct [:name, :age, :email]
   end
 
   defmodule TestAccount do
     @moduledoc false
-    @derive Encoder
+    @derive {Encoder, only: [:user, :balance]}
     defstruct [:user, :balance]
   end
 
@@ -105,6 +111,32 @@ defmodule LiveViewReact.EncoderTest do
                    fn ->
                      Encoder.encode(struct, [])
                    end
+    end
+
+    test "rejects bare derivation that would expose every field" do
+      module = "BareEncoder#{System.unique_integer([:positive])}"
+
+      assert_raise ArgumentError, ~r/requires either :only or :except/, fn ->
+        Code.compile_string("""
+        defmodule #{module} do
+          @derive LiveViewReact.Encoder
+          defstruct [:public, :secret]
+        end
+        """)
+      end
+    end
+
+    test "rejects conflicting derive options" do
+      module = "ConflictingEncoder#{System.unique_integer([:positive])}"
+
+      assert_raise ArgumentError, ~r/accepts :only or :except, not both/, fn ->
+        Code.compile_string("""
+        defmodule #{module} do
+          @derive {LiveViewReact.Encoder, only: [:public], except: [:secret]}
+          defstruct [:public, :secret]
+        end
+        """)
+      end
     end
   end
 

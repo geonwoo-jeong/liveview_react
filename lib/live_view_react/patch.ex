@@ -16,7 +16,6 @@ defmodule LiveViewReact.Patch do
   | `r` | `replace` |
   | `u` | `upsert` |
   | `l` | `limit` |
-  | `n` | nonce marker, ignored while decoding |
 
   Normal operations use:
 
@@ -24,8 +23,7 @@ defmodule LiveViewReact.Patch do
   <op><path_len>:<path><value>
   ```
 
-  `remove` omits `<value>`. The nonce marker uses `n<digits>` and exists only
-  to force LiveView to send a changed attribute.
+  `remove` omits `<value>`.
 
   Value tags:
 
@@ -43,14 +41,15 @@ defmodule LiveViewReact.Patch do
   @doc """
   Serializes patch maps into a compact binary payload.
 
-  Expected patch shapes are `%{op: op, path: path, value: value}`,
-  `%{op: "remove", path: path}`, and `%{op: "test", path: "", value: nonce}`.
-  The nonce test operation is encoded as a marker and is not returned by
-  `deserialize/1`.
+  Expected patch shapes are `%{op: op, path: path, value: value}` and
+  `%{op: "remove", path: path}`. Unknown operations and malformed shapes fail
+  immediately.
   """
-  def serialize(patches) do
+  def serialize(patches) when is_list(patches) do
     :erlang.iolist_to_binary(for patch <- patches, do: serialize_op(patch))
   end
+
+  def serialize(_patches), do: raise(ArgumentError, "patches must be a list")
 
   @doc """
   Encodes a JSON value for safe, compact HTML attribute transport.
@@ -83,7 +82,7 @@ defmodule LiveViewReact.Patch do
 
   Returns `[]` for an empty payload. Decoded operations are shaped as
   `[op, path]` for `remove` and `[op, path, value]` for all value-bearing
-  operations. Nonce markers are skipped.
+  operations.
   """
   def deserialize(""), do: []
 
@@ -93,19 +92,23 @@ defmodule LiveViewReact.Patch do
     |> Enum.reverse()
   end
 
-  defp serialize_op(%{op: "test", path: "", value: nonce}), do: ["n", to_string(nonce)]
-
-  defp serialize_op(%{op: op, path: path, value: value}) do
+  defp serialize_op(%{op: op, path: path, value: value})
+       when op in ["add", "replace", "upsert", "limit"] and is_binary(path) do
     path = encode_path(path)
     [op_code(op), Integer.to_string(js_string_length(path)), ?:, path, encode_value(value)]
   end
 
-  defp serialize_op(%{op: op, path: path}) do
+  defp serialize_op(%{op: "remove", path: path} = patch)
+       when is_binary(path) and not is_map_key(patch, :value) do
     path = encode_path(path)
-    [op_code(op), Integer.to_string(js_string_length(path)), ?:, path]
+    [op_code("remove"), Integer.to_string(js_string_length(path)), ?:, path]
   end
 
-  defp encode_path(path), do: path
+  defp serialize_op(patch), do: raise(ArgumentError, "invalid patch operation: #{inspect(patch)}")
+
+  defp encode_path(""), do: ""
+  defp encode_path("/" <> _rest = path), do: path
+  defp encode_path(path), do: raise(ArgumentError, "invalid JSON Pointer path: #{inspect(path)}")
 
   defp encode_value(nil), do: "z"
   defp encode_value(true), do: "b1"
@@ -125,11 +128,6 @@ defmodule LiveViewReact.Patch do
   end
 
   defp parse_ops("", acc), do: acc
-
-  defp parse_ops("n" <> rest, acc) do
-    {_nonce, rest} = take_digits(rest)
-    parse_ops(rest, acc)
-  end
 
   defp parse_ops(<<code::binary-size(1), rest::binary>>, acc) do
     {path_length, rest} = take_length(rest)
@@ -163,20 +161,29 @@ defmodule LiveViewReact.Patch do
     {value, rest}
   end
 
+  defp parse_value(_payload), do: raise(ArgumentError, "Invalid patch value")
+
   defp parse_number(value) do
     case Integer.parse(value) do
       {integer, ""} ->
         integer
 
       _ ->
-        {float, ""} = Float.parse(value)
-        float
+        case Float.parse(value) do
+          {float, ""} -> float
+          _ -> raise ArgumentError, "Invalid patch number"
+        end
     end
   end
 
   defp take_length(payload) do
-    {digits, ":" <> rest} = take_digits(payload)
-    {String.to_integer(digits), rest}
+    {digits, rest} = take_digits(payload)
+
+    case {digits, rest} do
+      {"", _rest} -> raise ArgumentError, "Invalid patch length prefix"
+      {digits, ":" <> rest} -> {String.to_integer(digits), rest}
+      _other -> raise ArgumentError, "Invalid patch length prefix"
+    end
   end
 
   defp take_digits(payload), do: take_digits(payload, "")
@@ -200,6 +207,10 @@ defmodule LiveViewReact.Patch do
     take_js_string(original, rest, remaining - units, bytes + utf8_byte_size(codepoint))
   end
 
+  defp take_js_string(_original, _rest, _remaining, _bytes) do
+    raise ArgumentError, "Patch length exceeds the remaining payload"
+  end
+
   defp js_string_length(value), do: js_string_length(value, 0)
   defp js_string_length(<<>>, acc), do: acc
 
@@ -219,10 +230,14 @@ defmodule LiveViewReact.Patch do
   defp op_code("replace"), do: "r"
   defp op_code("upsert"), do: "u"
   defp op_code("limit"), do: "l"
+  defp op_code(op), do: raise(ArgumentError, "Unknown patch operation: #{inspect(op)}")
 
   defp op_from_code("a"), do: "add"
   defp op_from_code("d"), do: "remove"
   defp op_from_code("r"), do: "replace"
   defp op_from_code("u"), do: "upsert"
   defp op_from_code("l"), do: "limit"
+
+  defp op_from_code(code),
+    do: raise(ArgumentError, "Unknown patch operation code: #{inspect(code)}")
 end

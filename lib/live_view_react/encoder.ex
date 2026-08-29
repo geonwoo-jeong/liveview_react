@@ -16,19 +16,20 @@ defprotocol LiveViewReact.Encoder do
   * `:only` - encodes only values of specified keys.
   * `:except` - encodes all struct fields except specified keys.
 
-  By default all keys except the `:__struct__` key are encoded.
+  Derivation must explicitly provide exactly one of these options. A bare
+  `@derive LiveViewReact.Encoder` is rejected so adding a sensitive field to a
+  struct cannot silently expose it to the browser.
 
   ## Example
 
       defmodule User do
-        @derive LiveViewReact.Encoder
+        @derive {LiveViewReact.Encoder, only: [:name, :email]}
         defstruct [:name, :email, :password]
       end
 
-  If we called `@derive {LiveViewReact.Encoder, only: [:name, :email]}`, only the
-  specified fields would be encoded. If we called
-  `@derive {LiveViewReact.Encoder, except: [:password]}`, all fields except the
-  specified ones would be encoded.
+  `only: [:name, :email]` exposes those fields. `except: [:password]` exposes
+  every current and future field except `:password`, so `:only` is preferred
+  for data-bearing structs.
 
   ## Deriving outside of the module
 
@@ -129,7 +130,6 @@ defimpl LiveViewReact.Encoder, for: Any do
       you may use Protocol.derive/3 placed outside of any module:
 
           Protocol.derive(LiveViewReact.Encoder, #{inspect(module)}, only: [...])
-          Protocol.derive(LiveViewReact.Encoder, #{inspect(module)})
 
       Nothing prevents you from defining your own implementation for the struct:
 
@@ -143,36 +143,47 @@ defimpl LiveViewReact.Encoder, for: Any do
       """
   end
 
-  def encode(value, _opts), do: value
+  def encode(value, _opts) do
+    raise Protocol.UndefinedError,
+      protocol: @protocol,
+      value: value,
+      description: "LiveViewReact props must be JSON-compatible values"
+  end
 
   defp fields_to_encode(struct, opts) do
-    fields = Map.keys(struct)
+    fields = Map.keys(struct) -- [:__struct__]
+    opts = Keyword.validate!(opts, [:only, :except])
 
-    cond do
-      only = Keyword.get(opts, :only) ->
+    case {Keyword.fetch(opts, :only), Keyword.fetch(opts, :except)} do
+      {{:ok, only}, :error} ->
         case only -- fields do
           [] ->
-            only
+            Enum.uniq(only)
 
           error_keys ->
             raise ArgumentError,
                   ":only specified keys (#{inspect(error_keys)}) that are not defined in defstruct: " <>
-                    "#{inspect(fields -- [:__struct__])}"
+                    inspect(fields)
         end
 
-      except = Keyword.get(opts, :except) ->
+      {:error, {:ok, except}} ->
         case except -- fields do
           [] ->
-            fields -- [:__struct__ | except]
+            fields -- Enum.uniq(except)
 
           error_keys ->
             raise ArgumentError,
                   ":except specified keys (#{inspect(error_keys)}) that are not defined in defstruct: " <>
-                    "#{inspect(fields -- [:__struct__])}"
+                    inspect(fields)
         end
 
-      true ->
-        fields -- [:__struct__]
+      {:error, :error} ->
+        raise ArgumentError,
+              "LiveViewReact.Encoder derivation requires either :only or :except"
+
+      {{:ok, _only}, {:ok, _except}} ->
+        raise ArgumentError,
+              "LiveViewReact.Encoder derivation accepts :only or :except, not both"
     end
   end
 end

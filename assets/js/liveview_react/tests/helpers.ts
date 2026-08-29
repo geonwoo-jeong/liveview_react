@@ -5,11 +5,13 @@ let mockIdCounter = 0;
 export const createMockLiveViewHook = (
   elementAttributes: Record<string, string> = {},
   targetAttributes: Record<string, string> = {},
+  liveSocket?: unknown,
 ) => {
   const id = Object.hasOwn(elementAttributes, "id")
     ? elementAttributes.id!
     : `mock-${++mockIdCounter}`;
   const attributes: Record<string, string> = {
+    "data-liveview-react-version": "1",
     "data-props": "{}",
     "data-props-kind": "snapshot",
     "data-streams-kind": "snapshot",
@@ -47,6 +49,7 @@ export const createMockLiveViewHook = (
 
   return {
     el: mockElement,
+    liveSocket,
     target,
     pushEvent: vi.fn(),
     pushEventTo: vi.fn(),

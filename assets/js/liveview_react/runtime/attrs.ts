@@ -1,10 +1,15 @@
 import { createElement, type ReactNode } from "react";
 
-import { decodeCompactJson, decodeCompactPatch } from "../compactPatch";
-import { applyPatch } from "../jsonPatch";
+import {
+  decodeCompactJson,
+  decodeCompactPatch,
+} from "../transport/compactPatch";
+import { applyPatch } from "../transport/jsonPatch";
+import {
+  assertTransportVersion,
+  readTransportKind,
+} from "../transport/protocol";
 import type { ComponentProps, SlotMap } from "../types";
-
-export type TransportKind = "patch" | "snapshot";
 
 export interface HydrationSnapshot {
   readonly children: readonly ReactNode[];
@@ -28,16 +33,6 @@ function readJsonAttribute(
 ): unknown {
   const data = element.getAttribute(attributeName);
   return data ? JSON.parse(data) : {};
-}
-
-function readTransportKind(
-  element: HTMLElement,
-  attributeName: "data-props-kind" | "data-streams-kind",
-): TransportKind {
-  const kind = element.getAttribute(attributeName);
-  if (kind === "patch" || kind === "snapshot") return kind;
-
-  throw new Error(`${attributeName} must be either "snapshot" or "patch"`);
 }
 
 function readSnapshot(element: HTMLElement): ComponentProps {
@@ -73,6 +68,8 @@ export function readElementId(element: HTMLElement): string {
 }
 
 export function readInitialProps(element: HTMLElement): ComponentProps {
+  assertTransportVersion(element);
+
   if (readTransportKind(element, "data-props-kind") !== "snapshot") {
     throw new Error('Initial data-props-kind must be "snapshot"');
   }
@@ -84,39 +81,62 @@ export function readNextProps(
   element: HTMLElement,
   currentProps: ComponentProps,
 ): ComponentProps {
+  assertTransportVersion(element);
+
   if (readTransportKind(element, "data-props-kind") === "snapshot") {
     return readSnapshot(element);
   }
 
-  return applyPatch(
-    { ...currentProps },
-    decodeCompactPatch(element.getAttribute("data-props-diff")),
+  return requireProps(
+    applyPatch(
+      currentProps,
+      decodeCompactPatch(element.getAttribute("data-props-diff")),
+    ),
+    "data-props-diff result",
   );
+}
+
+function requireProps(value: unknown, source: string): ComponentProps {
+  if (!isProps(value)) {
+    throw new TypeError(`${source} must be an object`);
+  }
+
+  return value;
 }
 
 export function readNextStreams(
   element: HTMLElement,
   currentStreams: ComponentProps,
 ): ComponentProps {
+  assertTransportVersion(element);
+
   const current =
     readTransportKind(element, "data-streams-kind") === "snapshot"
       ? {}
       : currentStreams;
 
-  return applyPatch(
-    { ...current },
-    decodeCompactPatch(element.getAttribute("data-streams-diff")),
+  return requireProps(
+    applyPatch(
+      current,
+      decodeCompactPatch(element.getAttribute("data-streams-diff")),
+    ),
+    "data-streams-diff result",
   );
 }
 
 export function readInitialStreams(element: HTMLElement): ComponentProps {
+  assertTransportVersion(element);
+
   if (readTransportKind(element, "data-streams-kind") !== "snapshot") {
     throw new Error('Initial data-streams-kind must be "snapshot"');
   }
 
-  return applyPatch(
-    {},
-    decodeCompactPatch(element.getAttribute("data-streams-diff")),
+  return requireProps(
+    applyPatch(
+      {},
+      decodeCompactPatch(element.getAttribute("data-streams-diff")),
+    ),
+    "initial data-streams-diff result",
   );
 }
 

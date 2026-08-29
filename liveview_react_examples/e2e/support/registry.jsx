@@ -7,6 +7,7 @@ export function e2eConnectParams() {
   const search = new URLSearchParams(window.location.search);
   return Object.freeze({
     e2e_queued_patch: search.get("queued_reconnect") === "true",
+    e2e_recovery_seed: search.get("malformed_recovery") === "true",
   });
 }
 
