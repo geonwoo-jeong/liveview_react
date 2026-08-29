@@ -36,6 +36,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "allowScripts": {
+    "fsevents@2.3.3": true
+  },
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
