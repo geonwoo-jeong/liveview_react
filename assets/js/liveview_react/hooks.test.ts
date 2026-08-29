@@ -114,6 +114,7 @@ function invoke(callback: LifecycleCallback, hook: object): void {
 function createTestHook(
   attributes: Record<string, string> = {},
   targetAttributes: Record<string, string> = {},
+  liveSocket?: unknown,
 ): TestHook {
   return createMockLiveViewHook(
     {
@@ -121,6 +122,7 @@ function createTestHook(
       ...attributes,
     },
     targetAttributes,
+    liveSocket,
   );
 }
 
@@ -406,10 +408,75 @@ describe("LiveViewReactHook", () => {
     expect(rootMock.unmount).toHaveBeenCalledTimes(1);
   });
 
+  it("recovers a malformed patch through one authoritative LiveView rejoin snapshot", async () => {
+    const connect = vi.fn();
+    const disconnect = vi.fn((callback?: () => void) => callback?.());
+    const liveSocket = { connect, disconnect };
+    const hook = createTestHook(
+      {
+        "data-props": encodeProps({ nested: { count: 1 }, retained: true }),
+      },
+      {},
+      liveSocket,
+    );
+    invoke(liveViewReactHook.mounted, hook);
+
+    setAttributes(hook, {
+      "data-props-diff": "r99:/nested/countn1:2",
+      "data-props-kind": "patch",
+      "data-streams-diff": "",
+      "data-streams-kind": "patch",
+    });
+    expect(() => invoke(liveViewReactHook.updated, hook)).not.toThrow();
+    await Promise.resolve();
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(rootMock.unmount).not.toHaveBeenCalled();
+    expect(renderMock).toHaveBeenCalledTimes(1);
+
+    setAttributes(hook, {
+      "data-props-diff": encodePatch([["replace", "/retained", false]]),
+      "data-props-kind": "patch",
+    });
+    invoke(liveViewReactHook.updated, hook);
+    expect(renderMock).toHaveBeenCalledTimes(1);
+
+    setAttributes(hook, {
+      "data-props": encodeProps({ nested: { count: 9 }, recovered: true }),
+      "data-props-diff": "",
+      "data-props-kind": "snapshot",
+      "data-streams-diff": "",
+      "data-streams-kind": "snapshot",
+    });
+    invoke(liveViewReactHook.updated, hook);
+    invoke(liveViewReactHook.reconnected, hook);
+
+    expect(vi.mocked(ReactDOM.createRoot)).toHaveBeenCalledTimes(1);
+    expect(rootMock.unmount).not.toHaveBeenCalled();
+    expect(renderMock).toHaveBeenCalledTimes(2);
+    expect(lastRenderedProps()).toMatchObject({
+      nested: { count: 9 },
+      recovered: true,
+    });
+    expect(lastRenderedProps()).not.toHaveProperty("retained");
+  });
+
+  it("fails closed on an unsupported transport version", () => {
+    const hook = createTestHook();
+    invoke(liveViewReactHook.mounted, hook);
+    setAttributes(hook, { "data-liveview-react-version": "2" });
+
+    expect(() => invoke(liveViewReactHook.updated, hook)).toThrow(
+      'data-liveview-react-version must be "1"',
+    );
+    expect(rootMock.unmount).toHaveBeenCalledTimes(1);
+  });
+
   it("accumulates stream patches", () => {
     const hook = createTestHook({
       "data-streams-diff": encodePatch([
-        ["replace", "/users", []],
+        ["add", "/users", []],
         ["upsert", "/users/-", { __dom_id: "u1" }],
       ]),
     });
@@ -434,9 +501,9 @@ describe("LiveViewReactHook", () => {
   it("resets stale streams on snapshot and does not replay updates on reconnect", () => {
     const hook = createTestHook({
       "data-streams-diff": encodePatch([
-        ["replace", "/notifications", []],
+        ["add", "/notifications", []],
         ["upsert", "/notifications/-", { __dom_id: "n1" }],
-        ["replace", "/users", []],
+        ["add", "/users", []],
         ["upsert", "/users/-", { __dom_id: "u1" }],
       ]),
     });
@@ -447,7 +514,7 @@ describe("LiveViewReactHook", () => {
       "data-props": encodeProps({ phase: "snapshot" }),
       "data-props-kind": "snapshot",
       "data-streams-diff": encodePatch([
-        ["replace", "/users", []],
+        ["add", "/users", []],
         ["upsert", "/users/-", { __dom_id: "u2" }],
       ]),
       "data-streams-kind": "snapshot",

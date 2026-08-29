@@ -3,6 +3,11 @@ import {
   getRegistryEntry,
   loadComponent,
 } from "../registry";
+import {
+  assertTransportVersion,
+  isFullSnapshotFrame,
+  UnsupportedTransportVersionError,
+} from "../transport/protocol";
 import type {
   ComponentProps,
   ComponentRegistry,
@@ -36,6 +41,21 @@ interface HookRuntimeOptions {
   readonly rootOptions: LiveViewReactRootOptions;
 }
 
+interface FullSyncSocket {
+  readonly connect: () => void;
+  readonly disconnect: (callback?: () => void) => void;
+}
+
+function asFullSyncSocket(value: unknown): FullSyncSocket | null {
+  if (typeof value !== "object" || value === null) return null;
+
+  const socket = value as Partial<FullSyncSocket>;
+  return typeof socket.connect === "function" &&
+    typeof socket.disconnect === "function"
+    ? (socket as FullSyncSocket)
+    : null;
+}
+
 function reportAsyncFailure(message: string, error: unknown): void {
   const reason = error instanceof Error ? error : new Error(String(error));
   queueMicrotask(() => {
@@ -48,10 +68,12 @@ class HookRuntime {
   readonly #components: ComponentRegistry;
   readonly #element: HTMLElement;
   readonly #elementId: string;
+  readonly #liveSocket: unknown;
   readonly #root: RootController;
   #destroyed = false;
   #loadGeneration = 0;
   #props: ComponentProps;
+  #recovering = false;
   #streams: ComponentProps;
 
   constructor({ components, hook, rootOptions }: HookRuntimeOptions) {
@@ -59,6 +81,7 @@ class HookRuntime {
     this.#components = components;
     this.#element = hook.el;
     this.#elementId = readElementId(hook.el);
+    this.#liveSocket = hook.liveSocket;
     this.#props = readInitialProps(hook.el);
     this.#streams = readInitialStreams(hook.el);
     const target = findReactTarget(hook.el);
@@ -118,17 +141,39 @@ class HookRuntime {
     this.#assertIdentity();
 
     try {
-      const nextProps = readNextProps(this.#element, this.#props);
-      const nextStreams = readNextStreams(this.#element, this.#streams);
-      const nextSnapshot = this.#snapshot(nextProps, nextStreams);
-
-      this.#root.update(nextSnapshot);
-      this.#props = nextProps;
-      this.#streams = nextStreams;
+      assertTransportVersion(this.#element);
     } catch (error: unknown) {
-      this.destroy();
-      throw error;
+      this.#failUpdate(error);
     }
+
+    if (this.#recovering && !isFullSnapshotFrame(this.#element)) return;
+
+    let nextProps: ComponentProps;
+    let nextStreams: ComponentProps;
+
+    try {
+      nextProps = readNextProps(this.#element, this.#props);
+      nextStreams = readNextStreams(this.#element, this.#streams);
+    } catch (error: unknown) {
+      if (
+        error instanceof UnsupportedTransportVersionError ||
+        this.#recovering ||
+        !this.#requestFullSync()
+      ) {
+        this.#failUpdate(error);
+      }
+      return;
+    }
+
+    try {
+      this.#root.update(this.#snapshot(nextProps, nextStreams));
+    } catch (error: unknown) {
+      this.#failUpdate(error);
+    }
+
+    this.#props = nextProps;
+    this.#streams = nextStreams;
+    this.#recovering = false;
   }
 
   reconnect(): void {
@@ -136,7 +181,7 @@ class HookRuntime {
     this.#assertIdentity();
     // LiveView applies the join snapshot and pending patches through updated()
     // before this callback. Re-reading either payload here would apply it twice.
-    this.#root.setConnected();
+    if (!this.#recovering) this.#root.setConnected();
   }
 
   disconnect(): void {
@@ -148,6 +193,7 @@ class HookRuntime {
   destroy(): void {
     if (this.#destroyed) return;
     this.#destroyed = true;
+    this.#recovering = false;
     this.#loadGeneration += 1;
     this.#root.destroy();
   }
@@ -170,6 +216,45 @@ class HookRuntime {
   #failIdentity(message: string): never {
     this.destroy();
     throw new Error(message);
+  }
+
+  #failUpdate(error: unknown): never {
+    this.destroy();
+    throw error;
+  }
+
+  #requestFullSync(): boolean {
+    const socket = asFullSyncSocket(this.#liveSocket);
+    if (!socket) return false;
+
+    this.#recovering = true;
+    queueMicrotask(() => {
+      if (this.#destroyed || !this.#recovering) return;
+
+      try {
+        socket.disconnect(() => {
+          if (this.#destroyed || !this.#recovering) return;
+
+          try {
+            socket.connect();
+          } catch (error: unknown) {
+            this.#failAsyncRecovery(error);
+          }
+        });
+      } catch (error: unknown) {
+        this.#failAsyncRecovery(error);
+      }
+    });
+
+    return true;
+  }
+
+  #failAsyncRecovery(error: unknown): void {
+    this.destroy();
+    reportAsyncFailure(
+      `Unable to recover component "${this.#componentName}" with a full LiveView sync`,
+      error,
+    );
   }
 
   #isActive(generation: number): boolean {

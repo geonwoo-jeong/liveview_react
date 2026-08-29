@@ -20,6 +20,9 @@ interface LifecycleAudit {
     readonly activeListeners: number;
     readonly deliveries: number;
   };
+  readonly transport: {
+    readonly corruptions: number;
+  };
   readonly hookCallbacks: readonly {
     readonly lifecycle: "disconnected" | "reconnected" | "updated";
     readonly propsKind: "patch" | "snapshot" | null;
@@ -30,6 +33,7 @@ interface LifecycleAudit {
 declare global {
   interface Window {
     readonly __liveViewReactE2E: {
+      readonly corruptNextPropsPatch: (rootId: string) => void;
       readonly resolveLazy: (gate: "update" | "destroy") => Promise<number>;
       readonly snapshot: () => LifecycleAudit;
       readonly startReconnectTrace: (rootId: string) => void;
@@ -250,6 +254,53 @@ test("reconnect consumes the join snapshot and queued patch once without remount
       propsKind: "patch",
       authoritativeQueuedCount: "1",
     },
+  ]);
+  expect(pageErrors()).toEqual([]);
+});
+
+test("a malformed patch recovers through a full rejoin snapshot without remounting", async ({
+  page,
+}) => {
+  const pageErrors = capturePageErrors(page);
+  await openHarness(page);
+
+  await page.getByTestId("local-increment-a").click();
+  await expect(page.getByTestId("local-a")).toHaveText("1");
+  const instanceBefore = await page.getByTestId("instance-a").textContent();
+
+  await page.evaluate(() => {
+    window.history.replaceState(
+      window.history.state,
+      "",
+      "/e2e/lifecycle?malformed_recovery=true",
+    );
+    window.__liveViewReactE2E.startReconnectTrace("e2e-root-a");
+    window.__liveViewReactE2E.corruptNextPropsPatch("e2e-root-a");
+  });
+
+  await page.getByTestId("server-update-a").click();
+
+  await expect
+    .poll(async () => (await readAudit(page)).transport.corruptions)
+    .toBe(1);
+  await expect(page.locator("[data-phx-main]")).toHaveClass(/phx-connected/);
+  await expect(page.getByTestId("authoritative-a")).toHaveText("41");
+  await expect(page.getByTestId("server-a")).toHaveText("41");
+  await expect(page.getByTestId("local-a")).toHaveText("1");
+  await expect(page.getByTestId("instance-a")).toHaveText(instanceBefore ?? "");
+
+  const audit = await readAudit(page);
+  expect(audit.probes.a).toEqual({ mounts: 2, cleanups: 1 });
+  expect(
+    audit.hookCallbacks.map(({ lifecycle, propsKind }) => [
+      lifecycle,
+      propsKind,
+    ]),
+  ).toEqual([
+    ["updated", "patch"],
+    ["disconnected", "patch"],
+    ["updated", "snapshot"],
+    ["reconnected", "snapshot"],
   ]);
   expect(pageErrors()).toEqual([]);
 });

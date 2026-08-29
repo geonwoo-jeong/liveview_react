@@ -32,7 +32,6 @@ defmodule LiveViewReact.PropsDiffTest do
       [op, path] -> %{"op" => op, "path" => path}
       [op, path, value] -> %{"op" => op, "path" => path, "value" => value}
     end)
-    |> Enum.reject(&(&1["op"] == "test"))
   end
 
   describe "props_diff functionality" do
@@ -55,13 +54,14 @@ defmodule LiveViewReact.PropsDiffTest do
       assert react.props_kind == "patch"
 
       assert_patches_equal(react.props_diff, [
-        %{"op" => "replace", "path" => "/username", "value" => "Jane"}
+        %{"op" => "add", "path" => "/username", "value" => "Jane"}
       ])
     end
 
     test "complex prop changes use Jsonpatch.diff for minimal operations" do
-      assigns = %{user: %{name: "John", age: 30}, __changed__: %{}}
-      assigns = assign(assigns, :user, %{name: "Alice", age: 25})
+      biography = String.duplicate("unchanged", 40)
+      assigns = %{user: %{name: "John", age: 30, biography: biography}, __changed__: %{}}
+      assigns = assign(assigns, :user, %{name: "Alice", age: 25, biography: biography})
 
       react = render_react_assigns(assigns)
 
@@ -71,6 +71,17 @@ defmodule LiveViewReact.PropsDiffTest do
       ])
     end
 
+    test "uses a full snapshot when it is no larger than the patch" do
+      assigns = %{user: %{name: "John", age: 30}, __changed__: %{}}
+      assigns = assign(assigns, :user, %{name: "Alice", age: 25})
+
+      react = render_react_assigns(assigns)
+
+      assert react.props_kind == "snapshot"
+      assert react.props == %{"user" => %{"name" => "Alice", "age" => 25}}
+      assert react.props_diff == []
+    end
+
     test "unchanged props do not appear in diff" do
       assigns = %{username: "John", age: 30, __changed__: %{}}
       assigns = assign(assigns, :username, "Bob")
@@ -78,7 +89,60 @@ defmodule LiveViewReact.PropsDiffTest do
       react = render_react_assigns(assigns)
 
       assert_patches_equal(react.props_diff, [
-        %{"op" => "replace", "path" => "/username", "value" => "Bob"}
+        %{"op" => "add", "path" => "/username", "value" => "Bob"}
+      ])
+    end
+
+    test "removed top-level props use a remove operation" do
+      react =
+        render_react_assigns(%{
+          "a/b~c" => String.duplicate("retained", 30),
+          __changed__: %{removed: "stale"}
+        })
+
+      assert react.props_kind == "patch"
+      assert react.props == nil
+
+      assert_patches_equal(react.props_diff, [
+        %{"op" => "remove", "path" => "/removed"}
+      ])
+    end
+
+    test "preserves nil, false, zero, and empty string in patches" do
+      filler = String.duplicate("unchanged", 50)
+
+      react =
+        render_react_assigns(%{
+          filler: filler,
+          optional: nil,
+          enabled: false,
+          count: 0,
+          label: "",
+          __changed__: %{optional: nil, enabled: true, count: 1, label: "old"}
+        })
+
+      assert react.props_kind == "patch"
+
+      assert_patches_equal(react.props_diff, [
+        %{"op" => "add", "path" => "/enabled", "value" => false},
+        %{"op" => "replace", "path" => "/count", "value" => 0},
+        %{"op" => "replace", "path" => "/label", "value" => ""},
+        %{"op" => "add", "path" => "/optional", "value" => nil}
+      ])
+    end
+
+    test "escapes JSON Pointer characters in top-level prop names" do
+      react =
+        render_react_assigns(%{
+          "a/b~c" => false,
+          filler: String.duplicate("unchanged", 40),
+          __changed__: %{"a/b~c" => true}
+        })
+
+      assert react.props_kind == "patch"
+
+      assert_patches_equal(react.props_diff, [
+        %{"op" => "add", "path" => "/a~1b~0c", "value" => false}
       ])
     end
 
@@ -124,13 +188,14 @@ defmodule LiveViewReact.PropsDiffTest do
 
     defmodule User do
       @moduledoc false
-      @derive LiveViewReact.Encoder
-      defstruct [:name, :age]
+      @derive {LiveViewReact.Encoder, only: [:name, :age, :biography]}
+      defstruct [:name, :age, :biography]
     end
 
     test "for structs uses LiveViewReact.Encoder to convert to map" do
-      assigns = %{user: %User{name: "John", age: 30}, __changed__: %{}}
-      assigns = assign(assigns, :user, %User{name: "Alice", age: 25})
+      biography = String.duplicate("unchanged", 40)
+      assigns = %{user: %User{name: "John", age: 30, biography: biography}, __changed__: %{}}
+      assigns = assign(assigns, :user, %User{name: "Alice", age: 25, biography: biography})
 
       react = render_react_assigns(assigns)
 

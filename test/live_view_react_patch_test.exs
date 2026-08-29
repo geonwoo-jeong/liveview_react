@@ -103,13 +103,10 @@ defmodule LiveViewReact.PatchTest do
       assert serialize_deserialize(patches) == patches
     end
 
-    test "omits nonce test operations when deserializing" do
-      patches = [
-        %{op: "test", path: "", value: 123},
-        %{op: "replace", path: "/count", value: 6}
-      ]
-
-      assert serialize_deserialize(patches) == [%{op: "replace", path: "/count", value: 6}]
+    test "rejects operations outside the protocol" do
+      assert_raise ArgumentError, ~r/invalid patch operation/, fn ->
+        Patch.serialize([%{op: "test", path: "", value: 123}])
+      end
     end
 
     test "round-trips stream upsert and limit operations" do
@@ -131,6 +128,31 @@ defmodule LiveViewReact.PatchTest do
     test "escapes carets and tildes reversibly" do
       value = %{"weird" => "~^both^~"}
       assert value |> Patch.encode_object() |> Patch.decode_object() == value
+    end
+  end
+
+  describe "malformed payloads" do
+    test "rejects missing and truncated length-prefixed fields" do
+      assert_raise ArgumentError, ~r/length prefix/, fn -> Patch.deserialize("r:/titlez") end
+
+      assert_raise ArgumentError, ~r/exceeds the remaining payload/, fn ->
+        Patch.deserialize("r99:/titlez")
+      end
+    end
+
+    test "rejects unknown operations, values, and invalid pointers" do
+      assert_raise ArgumentError, fn -> Patch.deserialize("x0:") end
+      assert_raise ArgumentError, ~r/Invalid patch value/, fn -> Patch.deserialize("r0:x") end
+
+      assert_raise ArgumentError, ~r/invalid JSON Pointer/, fn ->
+        Patch.serialize([%{op: "replace", path: "title", value: "bad"}])
+      end
+    end
+
+    test "rejects malformed numbers" do
+      assert_raise ArgumentError, ~r/Invalid patch number/, fn ->
+        Patch.deserialize("r0:n3:nan")
+      end
     end
   end
 

@@ -148,6 +148,7 @@ defmodule LiveViewReactTest do
       assert Floki.attribute(wrapper, "phx-hook") == ["LiveViewReactHook"]
       assert Floki.attribute(wrapper, "phx-update") == ["ignore"]
       assert Floki.attribute(wrapper, "data-component") == ["MyComponent"]
+      assert Floki.attribute(wrapper, "data-liveview-react-version") == ["1"]
       assert Floki.attribute(wrapper, "data-props-kind") == ["snapshot"]
       assert Floki.attribute(wrapper, "data-streams-kind") == ["snapshot"]
     end
