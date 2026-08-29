@@ -82,7 +82,7 @@ export interface UseLiveFormResult<
   readonly revision: number;
   readonly revisionInputProps: LiveFormRevisionInputProps;
   readonly setValue: (path: LiveFormPath, value: unknown) => void;
-  readonly submit: () => Promise<TSubmitReply | undefined>;
+  readonly submit: () => Promise<TSubmitReply>;
   readonly submitError: unknown;
   readonly submitReply: TSubmitReply | undefined;
   readonly submitting: boolean;
@@ -389,7 +389,7 @@ export function useLiveForm<
     [startNativeSubmit],
   );
 
-  const submit = useCallback((): Promise<TSubmitReply | undefined> => {
+  const submit = useCallback((): Promise<TSubmitReply> => {
     const form = formElementRef.current;
     if (form === null) {
       return rejectLiveFormSubmit<TSubmitReply>(
@@ -418,8 +418,8 @@ export function useLiveForm<
     }
 
     let reject!: (reason: unknown) => void;
-    let resolve!: (reply: TSubmitReply | undefined) => void;
-    const promise = new Promise<TSubmitReply | undefined>(
+    let resolve!: (reply: TSubmitReply) => void;
+    const promise = new Promise<TSubmitReply>(
       (promiseResolve, promiseReject) => {
         resolve = promiseResolve;
         reject = promiseReject;

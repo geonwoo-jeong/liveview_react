@@ -210,6 +210,7 @@ try {
         useLiveReact,
         type ComponentRegistry,
         type LiveFormServerSnapshot,
+        type LiveFormSubmitEvent,
         type LiveUploadConfig,
       } from "liveview_react";
       import { createLiveViewReactServer } from "liveview_react/server";
@@ -258,6 +259,13 @@ try {
         void reply;
         void form;
         void upload;
+        const submitEvent = {
+          id: "profile-form",
+          name: "profile",
+          reply: { saved: true },
+          revision: 0,
+        } satisfies LiveFormSubmitEvent<{ readonly saved: boolean }>;
+        void submitEvent;
         useLiveEvent<{ readonly count: number }>("count", ({ count }) => count);
         useEventReply<{ readonly ok: boolean }>("save");
         useLiveConnection();
