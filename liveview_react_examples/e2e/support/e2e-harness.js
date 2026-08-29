@@ -13,12 +13,14 @@ let audit = Object.freeze({
     activeListeners: 0,
     deliveries: 0,
   }),
+  hookCallbacks: Object.freeze([]),
 });
 
 let pendingLazy = Object.freeze({
   update: Object.freeze([]),
   destroy: Object.freeze([]),
 });
+let tracedRootId = null;
 
 function replaceProbe(label, update) {
   const current = audit.probes[label] ?? emptyProbe;
@@ -53,6 +55,36 @@ function snapshot() {
   return JSON.parse(JSON.stringify(audit));
 }
 
+function startReconnectTrace(rootId) {
+  if (typeof rootId !== "string" || rootId.length === 0) {
+    throw new TypeError("Reconnect trace requires a non-empty root id");
+  }
+
+  tracedRootId = rootId;
+  audit = Object.freeze({
+    ...audit,
+    hookCallbacks: Object.freeze([]),
+  });
+}
+
+function recordHookCallback(lifecycle, element) {
+  if (element.id !== tracedRootId) return;
+
+  const authoritativeQueuedCount = document.querySelector(
+    '[data-testid="authoritative-queued-count"]',
+  )?.textContent;
+  const entry = Object.freeze({
+    lifecycle,
+    propsKind: element.getAttribute("data-props-kind"),
+    authoritativeQueuedCount: authoritativeQueuedCount ?? null,
+  });
+
+  audit = Object.freeze({
+    ...audit,
+    hookCallbacks: Object.freeze([...audit.hookCallbacks, entry]),
+  });
+}
+
 async function resolveLazy(gate) {
   const releases = pendingLazy[gate];
   if (!releases) throw new Error(`Unknown lazy gate: ${gate}`);
@@ -72,7 +104,23 @@ async function resolveLazy(gate) {
 if (__LIVEVIEW_REACT_E2E__ && typeof window !== "undefined") {
   Object.defineProperty(window, "__liveViewReactE2E", {
     configurable: true,
-    value: Object.freeze({ resolveLazy, snapshot }),
+    value: Object.freeze({ resolveLazy, snapshot, startReconnectTrace }),
+  });
+}
+
+function wrapHookCallback(hook, lifecycle) {
+  return function (...args) {
+    recordHookCallback(lifecycle, this.el);
+    return hook[lifecycle].apply(this, args);
+  };
+}
+
+export function auditLiveViewReactHook(hook) {
+  return Object.freeze({
+    ...hook,
+    updated: wrapHookCallback(hook, "updated"),
+    disconnected: wrapHookCallback(hook, "disconnected"),
+    reconnected: wrapHookCallback(hook, "reconnected"),
   });
 }
 

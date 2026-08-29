@@ -15,18 +15,24 @@ topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
 window.addEventListener("phx:page-loading-start", (_info) => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
 
-function connectLiveView(registeredComponents) {
+function connectLiveView(registeredComponents, e2eOptions = {}) {
   const liveViewReact = createLiveViewReact({
     components: registeredComponents,
     strictMode: __LIVEVIEW_REACT_E2E__,
   });
+  const liveViewReactHook = e2eOptions.auditHook
+    ? e2eOptions.auditHook(liveViewReact.hooks.LiveViewReactHook)
+    : liveViewReact.hooks.LiveViewReactHook;
   const csrfToken = document
     .querySelector("meta[name='csrf-token']")
     .getAttribute("content");
   const liveSocket = new LiveSocket("/live", Socket, {
-    hooks: liveViewReact.hooks,
+    hooks: { ...liveViewReact.hooks, LiveViewReactHook: liveViewReactHook },
     longPollFallbackMs: 2500,
-    params: { _csrf_token: csrfToken },
+    params: () => ({
+      _csrf_token: csrfToken,
+      ...(e2eOptions.connectParams?.() ?? {}),
+    }),
   });
 
   // Connect if there are any LiveViews on the page.
@@ -37,9 +43,17 @@ function connectLiveView(registeredComponents) {
 }
 
 if (__LIVEVIEW_REACT_E2E__) {
-  import("../../e2e/support/registry").then(({ default: e2eComponents }) => {
-    connectLiveView({ ...components, ...e2eComponents });
-  });
+  import("../../e2e/support/registry").then(
+    ({ auditLiveViewReactHook, default: e2eComponents, e2eConnectParams }) => {
+      connectLiveView(
+        { ...components, ...e2eComponents },
+        {
+          auditHook: auditLiveViewReactHook,
+          connectParams: e2eConnectParams,
+        },
+      );
+    },
+  );
 } else {
   connectLiveView(components);
 }

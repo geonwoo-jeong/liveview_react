@@ -20,6 +20,11 @@ interface LifecycleAudit {
     readonly activeListeners: number;
     readonly deliveries: number;
   };
+  readonly hookCallbacks: readonly {
+    readonly lifecycle: "disconnected" | "reconnected" | "updated";
+    readonly propsKind: "patch" | "snapshot" | null;
+    readonly authoritativeQueuedCount: string | null;
+  }[];
 }
 
 declare global {
@@ -27,6 +32,7 @@ declare global {
     readonly __liveViewReactE2E: {
       readonly resolveLazy: (gate: "update" | "destroy") => Promise<number>;
       readonly snapshot: () => LifecycleAudit;
+      readonly startReconnectTrace: (rootId: string) => void;
     };
     readonly liveSocket: {
       readonly connect: () => void;
@@ -183,7 +189,7 @@ test("destroying a pending lazy root prevents a late mount", async ({
   expect(pageErrors()).toEqual([]);
 });
 
-test("reconnect applies the full join snapshot without remounting", async ({
+test("reconnect consumes the join snapshot and queued patch once without remounting", async ({
   page,
 }) => {
   const pageErrors = capturePageErrors(page);
@@ -193,7 +199,17 @@ test("reconnect applies the full join snapshot without remounting", async ({
   await page.getByTestId("local-increment-a").click();
   await page.getByTestId("server-update-a").click();
   await expect(page.getByTestId("server-a")).toHaveText("1");
+  await expect(page.getByTestId("queued-count-a")).toHaveText("0");
   const instanceBefore = await page.getByTestId("instance-a").textContent();
+
+  await page.evaluate(() => {
+    window.history.replaceState(
+      window.history.state,
+      "",
+      "/e2e/lifecycle?queued_reconnect=true",
+    );
+    window.__liveViewReactE2E.startReconnectTrace("e2e-root-a");
+  });
 
   await page.evaluate(
     () =>
@@ -205,11 +221,36 @@ test("reconnect applies the full join snapshot without remounting", async ({
 
   await expect(page.locator("[data-phx-main]")).toHaveClass(/phx-connected/);
   await expect(page.getByTestId("authoritative-a")).toHaveText("0");
+  await expect(page.getByTestId("authoritative-queued-count")).toHaveText("1");
   await expect(page.getByTestId("server-a")).toHaveText("0");
+  await expect(page.getByTestId("queued-count-a")).toHaveText("1");
   await expect(page.getByTestId("local-a")).toHaveText("2");
   await expect(page.getByTestId("instance-a")).toHaveText(instanceBefore ?? "");
 
-  expect((await readAudit(page)).probes.a).toEqual({ mounts: 2, cleanups: 1 });
+  const audit = await readAudit(page);
+  expect(audit.probes.a).toEqual({ mounts: 2, cleanups: 1 });
+  expect(audit.hookCallbacks).toEqual([
+    {
+      lifecycle: "disconnected",
+      propsKind: "patch",
+      authoritativeQueuedCount: "0",
+    },
+    {
+      lifecycle: "updated",
+      propsKind: "snapshot",
+      authoritativeQueuedCount: "0",
+    },
+    {
+      lifecycle: "updated",
+      propsKind: "patch",
+      authoritativeQueuedCount: "1",
+    },
+    {
+      lifecycle: "reconnected",
+      propsKind: "patch",
+      authoritativeQueuedCount: "1",
+    },
+  ]);
   expect(pageErrors()).toEqual([]);
 });
 
