@@ -25,7 +25,11 @@ import {
   readNextProps,
   readNextStreams,
 } from "./attrs";
-import { createLiveViewBridge, type LiveViewHookHost } from "./bridge";
+import {
+  createHookEventExecutor,
+  createLiveViewBridge,
+  type LiveViewHookHost,
+} from "./bridge";
 import type { EventCommandMap } from "./event-callbacks";
 import { RootController, type RootRenderSnapshot } from "./root";
 
@@ -102,6 +106,7 @@ class HookRuntime {
       componentName: this.#componentName,
       context: createLiveViewBridge(hook),
       element: hook.el,
+      executeEventCommands: createHookEventExecutor(hook),
       hydrate: hydrationSnapshot !== null,
       ...(hydrationSnapshot ? { hydrationSnapshot } : {}),
       initialSnapshot: this.#snapshot(),

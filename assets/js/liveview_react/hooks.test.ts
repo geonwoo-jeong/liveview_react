@@ -387,6 +387,7 @@ describe("LiveViewReactHook", () => {
     expect(exec).not.toHaveBeenCalled();
     changed();
     expect(exec).toHaveBeenCalledTimes(1);
+    expect(exec).toHaveBeenCalledWith([["push", { event: "increment-v2" }]]);
 
     setAttributes(hook, { "data-events": "{}" });
     invoke(liveViewReactHook.updated, hook);
@@ -400,6 +401,22 @@ describe("LiveViewReactHook", () => {
     invoke(liveViewReactHook.destroyed, hook);
     beforeDestroy();
     expect(exec).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails clearly when the public Hook js executor is unavailable", () => {
+    const hook = createTestHook({
+      "data-events": JSON.stringify({
+        onIncrement: [["push", { event: "increment" }]],
+      }),
+    });
+    hook.js.mockReturnValue({} as never);
+
+    invoke(liveViewReactHook.mounted, hook);
+    const callback = lastRenderedProps().onIncrement as () => void;
+
+    expect(() => callback()).toThrow(
+      "React event callbacks require the LiveView Hook public js().exec API",
+    );
   });
 
   it("exposes explicit failure callbacks while hydrating", () => {

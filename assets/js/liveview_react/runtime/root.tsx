@@ -20,6 +20,7 @@ import {
   EventCallbackCache,
   mergeEventCallbackProps,
   normalizeEventCommandMap,
+  type EventCommandExecutor,
   type EventCommandMap,
 } from "./event-callbacks";
 import { createIdentifierPrefix } from "./identifier-prefix";
@@ -35,6 +36,7 @@ export interface RootControllerOptions extends LiveViewReactRootOptions {
   readonly componentName: string;
   readonly context: LiveViewReactContextValue;
   readonly element: HTMLElement;
+  readonly executeEventCommands: EventCommandExecutor;
   readonly hydrate: boolean;
   readonly hydrationSnapshot?: RootRenderSnapshot;
   readonly initialSnapshot: RootRenderSnapshot;
@@ -97,8 +99,7 @@ export class RootController {
     this.#context = options.context;
     this.#element = options.element;
     this.#eventCallbacks = new EventCallbackCache({
-      element: options.element,
-      liveSocket: options.context.liveSocket,
+      execute: options.executeEventCommands,
     });
     this.#hydrate = options.hydrate;
     this.#reactOptions = Object.freeze(createRootOptions(options));

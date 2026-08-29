@@ -159,8 +159,10 @@ import { createLiveViewReactServer } from "liveview_react/server";
 export const { render } = createLiveViewReactServer({ components });
 ```
 
-See [installation](guides/installation.md), [SSR](guides/ssr.md), and
-[deployment](guides/deployment.md) for the full setup.
+See [installation](guides/installation.md),
+[client hooks](guides/client_hooks.md), [events](guides/events.md),
+[SSR](guides/ssr.md), and [deployment](guides/deployment.md) for the full
+setup.
 
 ## Requirements
 

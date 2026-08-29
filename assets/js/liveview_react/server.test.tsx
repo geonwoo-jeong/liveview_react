@@ -116,6 +116,10 @@ describe("createLiveViewReactServer", () => {
       { component: "Greeting", events: {}, identifierPrefix: "" },
       "identifierPrefix must be a non-empty string",
     ],
+    [
+      { component: "Greeting", identifierPrefix: IDENTIFIER_PREFIX },
+      "server render events must contain a JSON object",
+    ],
     [{ component: "Greeting" }, "identifierPrefix must be a non-empty string"],
     [
       {

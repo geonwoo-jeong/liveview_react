@@ -8,6 +8,7 @@ import type {
   LiveViewReactRootOptions,
 } from "../types";
 import { applyPatch } from "../transport/jsonPatch";
+import type { EventCommandExecutor } from "./event-callbacks";
 import { createIdentifierPrefix } from "./identifier-prefix";
 import { RootController, type RootRenderSnapshot } from "./root";
 
@@ -42,19 +43,25 @@ function createController(
   options: LiveViewReactRootOptions & {
     readonly hydrate?: boolean;
     readonly hydrationSnapshot?: RootRenderSnapshot;
+    readonly executeEventCommands?: EventCommandExecutor;
     readonly liveSocket?: unknown;
   } = {},
 ) {
   const element = document.createElement("div");
   element.id = "react-root";
   element.append(target);
-  const { liveSocket = null, ...rootOptions } = options;
+  const {
+    executeEventCommands = vi.fn(),
+    liveSocket = null,
+    ...rootOptions
+  } = options;
 
   return new RootController({
     ...rootOptions,
     componentName: "Stateful",
     context: createContext(element, liveSocket),
     element,
+    executeEventCommands,
     hydrate: options.hydrate === true,
     initialSnapshot,
     target,
@@ -151,7 +158,7 @@ describe("RootController", () => {
     } as const;
     const target = document.createElement("div");
     const controller = createController(target, snapshot({}, initialEvents), {
-      liveSocket: { js: () => ({ exec }) },
+      executeEventCommands: exec,
     });
 
     await act(async () => controller.mount(EventProbe));
@@ -162,7 +169,7 @@ describe("RootController", () => {
     expect(render).toHaveBeenCalledTimes(1);
 
     await act(async () => target.querySelector("button")?.click());
-    expect(exec).toHaveBeenCalledWith(expect.any(HTMLElement), [
+    expect(exec).toHaveBeenCalledWith([
       ["push", { event: "increment", value: { static: 1, client: 2 } }],
     ]);
 
@@ -335,7 +342,7 @@ describe("RootController", () => {
     const controller = createController(target, snapshot({}, events), {
       hydrate: true,
       hydrationSnapshot: snapshot({}, events),
-      liveSocket: { js: () => ({ exec }) },
+      executeEventCommands: exec,
     });
 
     await act(async () => controller.mount(EventProbe));
