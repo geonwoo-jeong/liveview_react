@@ -146,6 +146,29 @@ LiveView's normal document delegation. Native modified-click, `target`,
 on the anchor. The package also ships React JSX types for direct `phx-*`
 attributes such as `<button phx-click="increment">`.
 
+## Streams and slots
+
+Pass `@streams.name` directly as a prop. React receives an immutable array and
+each item includes Phoenix's computed `__dom_id`, which should be used as its
+React key. Insert, in-place update, `update_only`, delete, reset, custom DOM ID,
+positive/negative limit, and multiple independent streams follow Phoenix
+semantics.
+
+Default HEEx content is transported as React `children`, and named HEEx slots
+are transported as same-name React props:
+
+```heex
+<.react id="dialog" component="Dialog" socket={@socket}>
+  <:header><strong>Header</strong></:header>
+  Body
+</.react>
+```
+
+Slots are rendered as inert HTML wrappers inside the React tree. LiveViewReact
+does not support Phoenix-managed interactive subtrees inside slot HTML.
+Nested forms, `phx-*` bindings, `phx-hook`, and nested React roots are
+rejected during render instead of failing later in the browser.
+
 ## Server-side rendering
 
 The package supports Vite development SSR and Node.js production SSR through
@@ -161,6 +184,7 @@ export const { render } = createLiveViewReactServer({ components });
 
 See [installation](guides/installation.md),
 [client hooks](guides/client_hooks.md), [events](guides/events.md),
+[streams](guides/streams.md), [slots](guides/slots.md),
 [SSR](guides/ssr.md), and [deployment](guides/deployment.md) for the full
 setup.
 

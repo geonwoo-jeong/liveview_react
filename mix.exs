@@ -70,6 +70,8 @@ defmodule LiveViewReact.MixProject do
         "guides/installation.md",
         "guides/client_hooks.md",
         "guides/events.md",
+        "guides/streams.md",
+        "guides/slots.md",
         "guides/deployment.md",
         "guides/development.md",
         "guides/ssr.md",
