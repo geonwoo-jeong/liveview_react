@@ -38,7 +38,7 @@ defmodule LiveViewReact.Test do
     * `:id` - The required unique component identifier
     * `:props` - The decoded props passed to the component
     * `:events` - The encoded Phoenix JS command chains keyed by React callback prop
-    * `:slots` - Base64 encoded slot content
+    * `:slots` - decoded slot HTML keyed by slot name
     * `:ssr` - Boolean indicating if server-side rendering was performed
     * `:hydration` - The decoded immutable SSR hydration descriptor, or `nil`
     * `:props_kind` - `"snapshot"` or `"patch"`

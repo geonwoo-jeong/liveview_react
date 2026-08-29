@@ -7,6 +7,8 @@ defmodule LiveViewReactTest do
   require Phoenix.LiveViewTest
 
   alias LiveViewReact.Test
+  alias Phoenix.HTML.Safe
+  alias Phoenix.LiveView.JS
   alias Phoenix.LiveView.LiveStream
   alias Phoenix.LiveView.Socket
 
@@ -359,6 +361,15 @@ defmodule LiveViewReactTest do
       """
     end
 
+    def component_with_repeated_named_slot(assigns) do
+      ~H"""
+      <.react socket={@socket} id="repeated-named-slot" component="WithSlots">
+        <:hello>First</:hello>
+        <:hello>Second</:hello>
+      </.react>
+      """
+    end
+
     def component_with_inner_block(assigns) do
       ~H"""
       <.react socket={@socket} id="default-slot" component="WithSlots">
@@ -377,10 +388,18 @@ defmodule LiveViewReactTest do
       """
     end
 
-    test "warns about usage of named slot" do
-      assert_raise RuntimeError,
-                   "Unsupported slot: hello, only one default slot is supported, passed as React children.",
-                   fn -> render_react(&component_with_named_slot/1) end
+    test "renders named slots as dedicated slot entries" do
+      html = render_react(&component_with_named_slot/1)
+      react = Test.get_react(html)
+
+      assert react.slots == %{"hello" => "Simple content"}
+    end
+
+    test "renders repeated named slot entries in HEEx order" do
+      html = render_react(&component_with_repeated_named_slot/1)
+      react = Test.get_react(html)
+
+      assert react.slots == %{"hello" => "FirstSecond"}
     end
 
     test "renders default slot with inner_block" do
@@ -426,6 +445,130 @@ defmodule LiveViewReactTest do
       react = Test.get_react(html)
 
       assert react.slots == %{}
+    end
+
+    test "refreshes slots when HEEx erases conditional slot metadata" do
+      html =
+        LiveViewReact.react(%{
+          __changed__: %{sidebar: true},
+          component: "WithSlots",
+          id: "removed-named-slot",
+          sidebar: [],
+          socket: %Socket{transport_pid: self()},
+          ssr: false
+        })
+        |> Safe.to_iodata()
+        |> IO.iodata_to_binary()
+
+      react = Test.get_react(html)
+
+      assert react.slots == %{}
+      assert react.props_kind == "snapshot"
+      assert react.props == %{"sidebar" => []}
+    end
+
+    test "rejects prop collisions with named slot props" do
+      slot = [%{__slot__: :hello, inner_block: fn _, _ -> ["slot"] end}]
+
+      assert_raise ArgumentError,
+                   ~s(LiveViewReact.react/1 cannot define both prop "hello" and slot "hello"),
+                   fn ->
+                     LiveViewReact.react(%{
+                       "hello" => "prop",
+                       __changed__: nil,
+                       component: "WithSlots",
+                       hello: slot,
+                       id: "slot-prop-collision",
+                       socket: %Socket{}
+                     })
+                   end
+    end
+
+    test "rejects Phoenix-managed interactive markup inside slots" do
+      assert_raise ArgumentError,
+                   ~s(Unsupported interactive content in slot "default": Phoenix-managed bindings cannot be transported through liveview_react slots),
+                   fn ->
+                     render_react(fn assigns ->
+                       ~H"""
+                       <.react socket={@socket} id="interactive-slot" component="WithSlots">
+                         <button phx-click="increment">Increment</button>
+                       </.react>
+                       """
+                     end)
+                   end
+    end
+
+    test "rejects forms, hooks, LiveComponents, and nested React roots" do
+      unsupported = [
+        {"forms", "<form><input></form>"},
+        {"Phoenix hooks", ~s|<div phx-hook="Nested"></div>|},
+        {"Phoenix-managed bindings", ~s|<div data-phx-component="1"></div>|},
+        {"nested React roots", ~s|<div data-liveview-react-version="1"></div>|}
+      ]
+
+      for {reason, slot_html} <- unsupported do
+        slot = [
+          %{
+            __slot__: :inner_block,
+            inner_block: fn _, _ -> [Phoenix.HTML.raw(slot_html)] end
+          }
+        ]
+
+        assert_raise ArgumentError, ~r/#{reason}/, fn ->
+          LiveViewReact.react(%{
+            __changed__: nil,
+            component: "WithSlots",
+            id: "unsupported-slot",
+            inner_block: slot,
+            socket: %Socket{}
+          })
+        end
+      end
+    end
+
+    test "rejects invalid, reserved, prop-colliding, and event-colliding slot names" do
+      slot = fn name -> [%{__slot__: name, inner_block: fn _, _ -> ["slot"] end}] end
+
+      for {name, message} <- [
+            {"children", ~r/reserves the slot name "children"/},
+            {"bad-name", ~r/lower camelCase or snake_case/}
+          ] do
+        assert_raise ArgumentError, message, fn ->
+          LiveViewReact.react(%{
+            name => slot.(name),
+            __changed__: nil,
+            component: "WithSlots",
+            id: "invalid-slot-name",
+            socket: %Socket{}
+          })
+        end
+      end
+
+      assert_raise ArgumentError, ~r/prop "onSaveItem" and slot "onSaveItem"/, fn ->
+        LiveViewReact.react(%{
+          "r-on:save-item" => JS.push("save"),
+          onSaveItem: slot.(:onSaveItem),
+          __changed__: nil,
+          component: "WithSlots",
+          id: "event-slot-collision",
+          socket: %Socket{}
+        })
+      end
+    end
+
+    test "allows inert slot text that only mentions Phoenix binding names" do
+      html =
+        render_react(fn assigns ->
+          ~H"""
+          <.react socket={@socket} id="text-slot" component="WithSlots">
+            text mentioning phx-click="save" without markup
+          </.react>
+          """
+        end)
+
+      react = Test.get_react(html)
+
+      assert react.slots == %{"default" => ~s|text mentioning phx-click="save" without markup|}
     end
   end
 

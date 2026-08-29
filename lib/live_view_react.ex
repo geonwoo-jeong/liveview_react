@@ -16,6 +16,7 @@ defmodule LiveViewReact do
   alias LiveViewReact.Patch
   alias LiveViewReact.Slots
   alias LiveViewReact.SSR
+  alias LiveViewReact.StreamAdapter
   alias Phoenix.LiveView
   alias Phoenix.LiveView.LiveStream
 
@@ -129,10 +130,13 @@ defmodule LiveViewReact do
     props_transport = build_props_transport(props, assigns, transport_snapshot? or not flags.diff)
     {streams, _} = extract(stream_assigns, assigns, :streams)
     {slots, slots_changed?} = extract(assigns, assigns, :slots)
+    slots_changed? = slots_changed? or possible_slot_removal?(assigns)
+    rendered_slots = Slots.rendered_slot_map(slots)
+    validate_slot_prop_collisions!(raw_props, streams, events, rendered_slots)
 
     streams_diff =
       if flags.streams_diff,
-        do: calculate_streams_diff(streams, transport_snapshot?),
+        do: StreamAdapter.patches(streams, transport_snapshot?),
         else: []
 
     assigns
@@ -144,7 +148,7 @@ defmodule LiveViewReact do
     |> Map.put(:props_diff, props_transport.patch)
     |> Map.put(:streams_diff, Patch.serialize(streams_diff))
     |> Map.put(:streams_kind, transport_kind(transport_snapshot?))
-    |> Map.put(:slots, if(slots_changed?, do: Slots.rendered_slot_map(slots), else: %{}))
+    |> Map.put(:slots, rendered_slots)
     |> put_ssr_render(flags)
     |> mark_computed_changed(flags, slots_changed?, events_changed?)
   end
@@ -227,7 +231,7 @@ defmodule LiveViewReact do
   end
 
   defp removed_prop_diff(key, old_value) do
-    case normalize_key(key, old_value) do
+    case normalize_key(%{__changed__: nil}, key, old_value) do
       :props -> [%{op: "remove", path: pointer_path(key)}]
       _type -> []
     end
@@ -252,83 +256,58 @@ defmodule LiveViewReact do
   defp object_hash(%{"id" => id}) when not is_nil(id), do: id
   defp object_hash(_), do: nil
 
-  # Generates JSON patch operations for LiveStream changes.
-  # Handles insertions and deletions for Phoenix LiveView streams.
-  defp calculate_streams_diff(streams, initial)
-
-  defp calculate_streams_diff(streams, true) do
-    # for initial render, we want to reset all streams, and then apply the diffs
-    init = Enum.map(streams, fn {k, _} -> %{op: "add", path: "/#{k}", value: []} end)
-    diffs = Enum.flat_map(streams, fn {k, stream} -> generate_stream_patches(k, stream) end)
-    init ++ diffs
-  end
-
-  defp calculate_streams_diff(streams, false) do
-    Enum.flat_map(streams, fn {k, stream} -> generate_stream_patches(k, stream) end)
-  end
-
-  # Generates JSON patch operations for a single LiveStream's changes.
-  defp generate_stream_patches(stream_name, %LiveStream{} = stream) do
-    patches = []
-
-    patches =
-      if stream.reset?,
-        do: [%{op: "replace", path: "/#{stream_name}", value: []} | patches],
-        else: patches
-
-    patches =
-      Enum.reduce(stream.deletes, patches, fn dom_id, patches ->
-        [%{op: "remove", path: "/#{stream_name}/$$#{dom_id}"} | patches]
-      end)
-
-    # Reversed - inserts at -1 should be correctly ordered, inserts at 0 should be reversed
-    # see https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.html#stream/4 :at option
-    stream.inserts
-    |> Enum.reverse()
-    |> Enum.reduce(patches, fn {dom_id, at, item, limit, update_only}, patches ->
-      item = Map.put(Encoder.encode(item, []), :__dom_id, dom_id)
-
-      patches =
-        if update_only,
-          do: [%{op: "replace", path: "/#{stream_name}/$$#{dom_id}", value: item} | patches],
-          else: [
-            %{
-              op: "upsert",
-              path: "/#{stream_name}/#{if at == -1, do: "-", else: at}",
-              value: item
-            }
-            | patches
-          ]
-
-      if limit,
-        do: [%{op: "limit", path: "/#{stream_name}", value: limit} | patches],
-        else: patches
-    end)
-    |> Enum.reverse()
-  end
-
   # `iterable` is the (possibly diff-filtered) collection of assigns to bucket by `type`.
   # `source` is always the original, unfiltered assigns map (with `__changed__` intact),
   # used for the `key_changed/2` lookups below regardless of what `iterable` is.
   defp extract(iterable, source, type) do
     Enum.reduce(iterable, {%{}, false}, fn {key, value}, {acc, changed} ->
-      case normalize_key(key, value) do
+      case normalize_key(source, key, value) do
         ^type -> {Map.put(acc, key, value), changed || key_changed(source, key)}
         _ -> {acc, changed}
       end
     end)
   end
 
-  defp normalize_key(key, _val) when key in @reserved_assigns, do: :special
+  defp normalize_key(_source, key, _val) when key in @reserved_assigns, do: :special
 
-  defp normalize_key("r-on:" <> _event_name, _value), do: :events
-  defp normalize_key(_key, [%{__slot__: _}]), do: :slots
-  defp normalize_key(key, val) when is_atom(key), do: key |> to_string() |> normalize_key(val)
-  defp normalize_key(_key, %LiveStream{}), do: :streams
-  defp normalize_key(_key, _val), do: :props
+  defp normalize_key(_source, "r-on:" <> _event_name, _value), do: :events
+
+  defp normalize_key(source, key, value) do
+    cond do
+      slot_assign?(source, key, value) -> :slots
+      is_atom(key) -> normalize_key(source, Atom.to_string(key), value)
+      match?(%LiveStream{}, value) -> :streams
+      true -> :props
+    end
+  end
 
   defp key_changed(%{__changed__: nil}, _key), do: true
   defp key_changed(%{__changed__: changed}, key), do: Map.has_key?(changed, key)
+
+  defp slot_assign?(source, key, value) do
+    slot_value?(value) or changed_from_slot?(source, key)
+  end
+
+  defp slot_value?([%{__slot__: _} | _rest]), do: true
+  defp slot_value?(_value), do: false
+
+  defp changed_from_slot?(%{__changed__: nil}, _key), do: false
+
+  defp changed_from_slot?(%{__changed__: changed}, key) do
+    changed
+    |> Map.get(key)
+    |> slot_value?()
+  end
+
+  # HEEx represents a conditional named slot that became false as an empty
+  # list, which is indistinguishable from an ordinary empty-list prop. If such
+  # an assign changed, refresh the authoritative slot map. Ordinary list props
+  # pay only this small transport cost; stale named slots cannot survive.
+  defp possible_slot_removal?(%{__changed__: nil}), do: false
+
+  defp possible_slot_removal?(%{__changed__: changed} = assigns) do
+    Enum.any?(changed, fn {key, _value} -> Map.get(assigns, key) == [] end)
+  end
 
   defp ssr_request(assigns) do
     %{
@@ -346,6 +325,25 @@ defmodule LiveViewReact do
     SSR.render(request)
   rescue
     SSR.NotConfigured -> nil
+  end
+
+  defp validate_slot_prop_collisions!(props, streams, events, slots) do
+    component_prop_names =
+      props
+      |> Map.keys()
+      |> Enum.concat(Map.keys(streams))
+      |> Enum.concat(Map.keys(events))
+      |> Enum.map(&to_string/1)
+      |> MapSet.new()
+
+    Enum.each(slots, fn {slot_name, _html} ->
+      prop_name = Slots.prop_name(slot_name)
+
+      if MapSet.member?(component_prop_names, prop_name) do
+        raise ArgumentError,
+              "LiveViewReact.react/1 cannot define both prop #{inspect(prop_name)} and slot #{inspect(slot_name)}"
+      end
+    end)
   end
 
   defp json(data), do: Jason.encode!(data, escape: :html_safe)

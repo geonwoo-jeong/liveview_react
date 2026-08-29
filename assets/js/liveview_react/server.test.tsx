@@ -66,7 +66,46 @@ describe("createLiveViewReactServer", () => {
         slots: { default: "<strong>Server slot</strong>" },
       }),
     ).resolves.toBe(
-      "<section><div><strong>Server slot</strong></div></section>",
+      '<section><div data-liveview-react-slot="default"><strong>Server slot</strong></div></section>',
+    );
+  });
+
+  it("maps named slots to dedicated React props", async () => {
+    function Dialog({
+      children,
+      footer,
+      header,
+    }: {
+      readonly children?: ReactNode;
+      readonly footer?: ReactNode;
+      readonly header?: ReactNode;
+    }) {
+      return createElement(
+        "section",
+        null,
+        createElement("header", null, header),
+        createElement("main", null, children),
+        createElement("footer", null, footer),
+      );
+    }
+
+    const server = createLiveViewReactServer({
+      components: { Dialog: { component: Dialog } },
+    });
+
+    await expect(
+      server.render({
+        component: "Dialog",
+        events: {},
+        identifierPrefix: IDENTIFIER_PREFIX,
+        slots: {
+          default: "<p>Body</p>",
+          footer: "<em>Footer</em>",
+          header: "<strong>Header</strong>",
+        },
+      }),
+    ).resolves.toBe(
+      '<section><header><div data-liveview-react-slot="header"><strong>Header</strong></div></header><main><div data-liveview-react-slot="default"><p>Body</p></div></main><footer><div data-liveview-react-slot="footer"><em>Footer</em></div></footer></section>',
     );
   });
 
@@ -239,6 +278,22 @@ describe("createLiveViewReactServer", () => {
         props: { onIncrement: "ordinary" },
       }),
     ).rejects.toThrow('ordinary prop "onIncrement"');
+  });
+
+  it("rejects ordinary prop collisions with slot props", async () => {
+    const server = createLiveViewReactServer({
+      components: { Greeting: { component: Greeting } },
+    });
+
+    await expect(
+      server.render({
+        component: "Greeting",
+        events: {},
+        identifierPrefix: IDENTIFIER_PREFIX,
+        props: { children: "ordinary" },
+        slots: { default: "<strong>Slot</strong>" },
+      }),
+    ).rejects.toThrow('cannot define both prop "children" and slot "default"');
   });
 
   it("keeps server markup stable when StrictMode is enabled", async () => {

@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import {
   decodeCompactJson,
@@ -16,6 +16,7 @@ import {
   type EventCommandMap,
 } from "./event-callbacks";
 import { createIdentifierPrefix } from "./identifier-prefix";
+import { createSlotBindings, type SlotBindings } from "./slots";
 
 export interface HydrationSnapshot {
   readonly children: readonly ReactNode[];
@@ -34,14 +35,6 @@ const HYDRATION_FIELDS: readonly string[] = Object.freeze([
 
 function isProps(value: unknown): value is ComponentProps {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readJsonAttribute(
-  element: HTMLElement,
-  attributeName: string,
-): unknown {
-  const data = element.getAttribute(attributeName);
-  return data ? JSON.parse(data) : {};
 }
 
 function readSnapshot(element: HTMLElement): ComponentProps {
@@ -168,10 +161,19 @@ export function readInitialStreams(element: HTMLElement): ComponentProps {
 }
 
 function readSlotMap(element: HTMLElement): SlotMap {
-  return validateSlotMap(
-    readJsonAttribute(element, "data-slots"),
-    "data-slots",
-  );
+  const encodedSlots = element.getAttribute("data-slots");
+  if (encodedSlots === null) {
+    throw new Error('LiveViewReactHook requires a "data-slots" attribute');
+  }
+
+  let slots: unknown;
+  try {
+    slots = JSON.parse(encodedSlots);
+  } catch (error: unknown) {
+    throw new TypeError("data-slots must contain valid JSON", { cause: error });
+  }
+
+  return validateSlotMap(slots, "data-slots");
 }
 
 function validateSlotMap(value: unknown, source: string): SlotMap {
@@ -188,19 +190,38 @@ function validateSlotMap(value: unknown, source: string): SlotMap {
   return value as SlotMap;
 }
 
-function createChildren(defaultSlot: string | undefined): readonly ReactNode[] {
-  if (!defaultSlot) return Object.freeze([]);
-
-  return Object.freeze([
-    createElement("div", {
-      dangerouslySetInnerHTML: { __html: defaultSlot.trim() },
-    }),
-  ]);
+function decodeSlotMap(slots: SlotMap, source: string): SlotMap {
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(slots).map(([slotName, slot]) => {
+        try {
+          const binary = atob(slot);
+          const bytes = Uint8Array.from(binary, (character) =>
+            character.charCodeAt(0),
+          );
+          const html = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+          return [slotName, html];
+        } catch (error: unknown) {
+          throw new TypeError(
+            `Slot "${slotName}" in ${source} must be valid base64-encoded UTF-8`,
+            { cause: error },
+          );
+        }
+      }),
+    ),
+  );
 }
 
-export function readChildren(element: HTMLElement): readonly ReactNode[] {
-  const defaultSlot = readSlotMap(element).default;
-  return createChildren(defaultSlot ? atob(defaultSlot) : undefined);
+export function readSlotBindings(
+  element: HTMLElement,
+  props: ComponentProps,
+): SlotBindings {
+  const slots = readDecodedSlots(element);
+  return createSlotBindings(slots, props, "data-slots");
+}
+
+function readDecodedSlots(element: HTMLElement): SlotMap {
+  return decodeSlotMap(readSlotMap(element), "data-slots");
 }
 
 export function readHydrationSnapshot(
@@ -259,10 +280,18 @@ export function readHydrationSnapshot(
   );
   assertNoEventPropCollisions(value.props, events, "data-react-hydration");
   const slots = validateSlotMap(value.slots, "data-react-hydration slots");
+  const slotBindings = createSlotBindings(
+    slots,
+    value.props,
+    "data-react-hydration slots",
+  );
   return Object.freeze({
-    children: createChildren(slots.default),
+    children: slotBindings.children,
     events,
-    props: Object.freeze({ ...value.props }),
+    props: Object.freeze({
+      ...value.props,
+      ...slotBindings.props,
+    }),
   });
 }
 
