@@ -10,7 +10,7 @@ import {
   recordStrictRemoval,
 } from "./e2e-harness";
 
-export function E2ELifecycleProbe({ label, serverVersion }) {
+export function E2ELifecycleProbe({ label, queuedItems = [], serverVersion }) {
   const [instanceId, setInstanceId] = useState("pending");
   const [localCount, setLocalCount] = useState(0);
 
@@ -23,6 +23,9 @@ export function E2ELifecycleProbe({ label, serverVersion }) {
     <section data-testid={`probe-${label}`}>
       <output data-testid={`instance-${label}`}>{instanceId}</output>
       <output data-testid={`server-${label}`}>{serverVersion}</output>
+      <output data-testid={`queued-count-${label}`}>
+        {queuedItems.length}
+      </output>
       <output data-testid={`local-${label}`}>{localCount}</output>
       <button
         data-testid={`local-increment-${label}`}

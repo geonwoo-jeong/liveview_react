@@ -27,14 +27,20 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
       </div>
 
       <output data-testid="authoritative-a">{@server_a}</output>
+      <output data-testid="authoritative-queued-count">{length(@queued_items)}</output>
       <output data-testid="removal-sequence">{@removal_sequence}</output>
       <output data-testid="strict-sequence">{@strict_sequence}</output>
+
+      <form id="e2e-reconnect-recovery" phx-change="recover_reconnect_form" hidden>
+        <input type="hidden" name="reconnect[value]" value="stable" />
+      </form>
 
       <div class="grid gap-4 md:grid-cols-2">
         <.react
           id="e2e-root-a"
           component="E2ELifecycleProbe"
           label="a"
+          queuedItems={@queued_items}
           serverVersion={@server_a}
           socket={@socket}
         />
@@ -80,10 +86,22 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
   end
 
   def mount(_params, _session, socket) do
+    connect_params =
+      if connected?(socket), do: Phoenix.LiveView.get_connect_params(socket) || %{}, else: %{}
+
+    reconnect_mounts = Map.get(connect_params, "_mounts", 0)
+
+    reconnect_with_queued_patch? =
+      is_integer(reconnect_mounts) and reconnect_mounts > 0 and
+        connect_params["e2e_queued_patch"] == true
+
+    if reconnect_with_queued_patch?, do: send(self(), :apply_queued_reconnect_patch)
+
     {:ok,
      assign(socket,
        server_a: 0,
        server_b: 0,
+       queued_items: [],
        delayed_version: 0,
        removal_sequence: 0,
        show_b: true,
@@ -102,6 +120,8 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
   end
 
   def handle_event("increment_server", _params, socket), do: {:noreply, socket}
+
+  def handle_event("recover_reconnect_form", _params, socket), do: {:noreply, socket}
 
   def handle_event("remove_b", _params, socket) do
     {:noreply,
@@ -130,6 +150,10 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
 
   def handle_event("remove_strict", _params, socket) do
     {:noreply, assign(socket, :show_strict, false)}
+  end
+
+  def handle_info(:apply_queued_reconnect_patch, socket) do
+    {:noreply, assign(socket, :queued_items, [%{id: "queued-1", label: "post-join"}])}
   end
 end
 

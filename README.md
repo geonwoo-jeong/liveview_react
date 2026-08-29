@@ -67,8 +67,10 @@ Render the component from a LiveView with an explicit, stable ID:
 />
 ```
 
-`id` and `component` are required non-empty strings. Other assigns become
-React props unless they are reserved rendering attributes.
+`id` and `component` are required non-empty strings, and `socket` must be the
+current `Phoenix.LiveView.Socket`. Every other assign—including `class`—is a
+React prop unless it is a reserved rendering attribute. The outer DOM element
+is transport-only and has no public styling attributes.
 
 Inside the React tree, `useLiveViewReact()` exposes the existing LiveView hook
 bridge:

@@ -34,7 +34,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "npm run dev",
+      command: "npm run dev -- --force",
       cwd: path.join(exampleRoot, "assets"),
       env: { LIVEVIEW_REACT_E2E: "true" },
       url: "http://127.0.0.1:4011/@vite/client",
