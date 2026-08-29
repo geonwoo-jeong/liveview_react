@@ -1,6 +1,6 @@
 // Synthetic components used only by the browser lifecycle suite.
 import { useEffect, useState } from "react";
-import { useLiveViewReact } from "liveview_react";
+import { useLiveEvent } from "liveview_react";
 
 import {
   recordProbeCleanup,
@@ -39,22 +39,19 @@ export function E2ELifecycleProbe({ label, queuedItems = [], serverVersion }) {
 }
 
 function StrictListenerProbe() {
-  const { handleEvent, removeHandleEvent } = useLiveViewReact();
   const [deliveries, setDeliveries] = useState(0);
 
+  useLiveEvent("e2e_strict_ping", () => {
+    recordStrictDelivery();
+    setDeliveries((count) => count + 1);
+  });
+
   useEffect(() => {
-    const eventReference = handleEvent("e2e_strict_ping", () => {
-      recordStrictDelivery();
-      setDeliveries((count) => count + 1);
-    });
-
     recordStrictRegistration();
-
     return () => {
-      removeHandleEvent(eventReference);
       recordStrictRemoval();
     };
-  }, [handleEvent, removeHandleEvent]);
+  }, []);
 
   return (
     <section data-testid="strict-probe">

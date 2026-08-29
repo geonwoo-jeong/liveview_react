@@ -105,9 +105,11 @@ function hydrationDescriptor(
   props: Readonly<Record<string, unknown>> = {},
   slots: Readonly<Record<string, string>> = {},
   component = "TestComponent",
+  events: Readonly<Record<string, unknown>> = {},
 ): string {
   return JSON.stringify({
     component,
+    events,
     identifierPrefix: createIdentifierPrefix(rootId),
     props,
     slots,
@@ -343,6 +345,92 @@ describe("LiveViewReactHook", () => {
     expect(lastRenderedProps()).not.toHaveProperty("pushEvent");
     expect(lastRenderedProps()).not.toHaveProperty("pushEventTo");
     expect(lastRenderedProps()).not.toHaveProperty("upload");
+  });
+
+  it("wires stable live callbacks and invalidates stale references", () => {
+    const exec = vi.fn();
+    const liveSocket = { js: vi.fn(() => ({ exec })) };
+    const initialEvents = {
+      onIncrement: [["push", { event: "increment", value: { static: true } }]],
+    };
+    const hook = createTestHook(
+      { "data-events": JSON.stringify(initialEvents) },
+      {},
+      liveSocket,
+    );
+
+    invoke(liveViewReactHook.mounted, hook);
+    const first = lastRenderedProps().onIncrement as (
+      payload?: Record<string, unknown>,
+    ) => void;
+
+    setAttributes(hook, {
+      "data-props-diff": "",
+      "data-props-kind": "patch",
+      "data-streams-diff": "",
+      "data-streams-kind": "patch",
+    });
+    invoke(liveViewReactHook.updated, hook);
+    const unchanged = lastRenderedProps().onIncrement;
+    expect(unchanged).toBe(first);
+
+    setAttributes(hook, {
+      "data-events": JSON.stringify({
+        onIncrement: [["push", { event: "increment-v2" }]],
+      }),
+    });
+    invoke(liveViewReactHook.updated, hook);
+    const changed = lastRenderedProps().onIncrement as () => void;
+    expect(changed).not.toBe(first);
+
+    first({ client: true });
+    expect(exec).not.toHaveBeenCalled();
+    changed();
+    expect(exec).toHaveBeenCalledTimes(1);
+
+    setAttributes(hook, { "data-events": "{}" });
+    invoke(liveViewReactHook.updated, hook);
+    expect(lastRenderedProps()).not.toHaveProperty("onIncrement");
+    changed();
+    expect(exec).toHaveBeenCalledTimes(1);
+
+    setAttributes(hook, { "data-events": JSON.stringify(initialEvents) });
+    invoke(liveViewReactHook.updated, hook);
+    const beforeDestroy = lastRenderedProps().onIncrement as () => void;
+    invoke(liveViewReactHook.destroyed, hook);
+    beforeDestroy();
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes explicit failure callbacks while hydrating", () => {
+    const events = {
+      onIncrement: [["push", { event: "increment" }]],
+    };
+    const hook = createTestHook(
+      {
+        id: "hydration-events",
+        "data-events": JSON.stringify(events),
+      },
+      {
+        "data-react-hydration": hydrationDescriptor(
+          "hydration-events",
+          {},
+          {},
+          "TestComponent",
+          events,
+        ),
+      },
+      { js: () => ({ exec: vi.fn() }) },
+    );
+
+    invoke(liveViewReactHook.mounted, hook);
+
+    const serverProps = findComponentProps(
+      vi.mocked(ReactDOM.hydrateRoot).mock.calls[0]?.[1] as ReactNode,
+    );
+    expect(() => (serverProps?.onIncrement as () => void)()).toThrow(
+      "unavailable during server rendering or hydration",
+    );
   });
 
   it("decodes the default slot into a React child", () => {

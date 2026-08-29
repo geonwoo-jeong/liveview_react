@@ -2,7 +2,7 @@ import { createElement, type ReactNode } from "react";
 import { preload, preloadModule } from "react-dom";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { useLiveViewReact } from "./context";
+import { useLiveReact } from "./context";
 import {
   createLiveViewReactServer,
   type CreateLiveViewReactServerOptions,
@@ -27,6 +27,7 @@ describe("createLiveViewReactServer", () => {
     await expect(
       server.render({
         component: "Greeting",
+        events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
         props: { name: "LiveView" },
       }),
@@ -43,6 +44,7 @@ describe("createLiveViewReactServer", () => {
     await expect(
       server.render({
         component: "Greeting",
+        events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
         props: { name: "React" },
       }),
@@ -59,6 +61,7 @@ describe("createLiveViewReactServer", () => {
     await expect(
       server.render({
         component: "Card",
+        events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
         slots: { default: "<strong>Server slot</strong>" },
       }),
@@ -73,6 +76,7 @@ describe("createLiveViewReactServer", () => {
     await expect(
       server.render({
         component: "Missing",
+        events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
       }),
     ).rejects.toThrow('Component "Missing" is not registered');
@@ -84,6 +88,7 @@ describe("createLiveViewReactServer", () => {
     [
       {
         component: "Greeting",
+        events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
         props: [],
       },
@@ -92,6 +97,7 @@ describe("createLiveViewReactServer", () => {
     [
       {
         component: "Greeting",
+        events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
         slots: { default: 1 },
       },
@@ -100,16 +106,25 @@ describe("createLiveViewReactServer", () => {
     [
       {
         component: "Greeting",
+        events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
         unexpected: true,
       },
       'Unknown server render request field "unexpected"',
     ],
     [
-      { component: "Greeting", identifierPrefix: "" },
+      { component: "Greeting", events: {}, identifierPrefix: "" },
       "identifierPrefix must be a non-empty string",
     ],
     [{ component: "Greeting" }, "identifierPrefix must be a non-empty string"],
+    [
+      {
+        component: "Greeting",
+        events: { increment: [] },
+        identifierPrefix: IDENTIFIER_PREFIX,
+      },
+      "must be a React onCamelCase prop name",
+    ],
   ])(
     "validates server render requests at runtime",
     async (request, message) => {
@@ -139,7 +154,7 @@ describe("createLiveViewReactServer", () => {
 
   it("uses the same bridge-provider and custom-wrapper ordering as the client", async () => {
     function ServerWrapper({ children }: { readonly children: ReactNode }) {
-      const bridge = useLiveViewReact();
+      const bridge = useLiveReact();
       return createElement(
         "main",
         { "data-server": bridge.el === null ? "true" : "false" },
@@ -170,11 +185,56 @@ describe("createLiveViewReactServer", () => {
     await expect(
       server.render({
         component: "Greeting",
+        events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
         props: { name: "wrapped" },
       }),
     ).resolves.toBe('<main data-server="true"><p>Hello wrapped</p></main>');
     expect(wrapRoot).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes explicit unavailable callbacks under their React prop names", async () => {
+    function EventProbe({ onIncrement }: { readonly onIncrement: () => void }) {
+      let error = "missing";
+      try {
+        onIncrement();
+      } catch (reason: unknown) {
+        error = reason instanceof Error ? reason.message : String(reason);
+      }
+      return createElement("p", null, error);
+    }
+    const server = createLiveViewReactServer({
+      components: { EventProbe: { component: EventProbe } },
+    });
+
+    const html = await server.render({
+      component: "EventProbe",
+      events: {
+        onIncrement: [["push", { event: "increment" }]],
+      },
+      identifierPrefix: IDENTIFIER_PREFIX,
+    });
+
+    expect(html).toContain(
+      "Event callback &quot;onIncrement&quot; is unavailable during server rendering or hydration",
+    );
+  });
+
+  it("rejects ordinary prop collisions with event callback props", async () => {
+    const server = createLiveViewReactServer({
+      components: { Greeting: { component: Greeting } },
+    });
+
+    await expect(
+      server.render({
+        component: "Greeting",
+        events: {
+          onIncrement: [["push", { event: "increment" }]],
+        },
+        identifierPrefix: IDENTIFIER_PREFIX,
+        props: { onIncrement: "ordinary" },
+      }),
+    ).rejects.toThrow('ordinary prop "onIncrement"');
   });
 
   it("keeps server markup stable when StrictMode is enabled", async () => {
@@ -183,6 +243,7 @@ describe("createLiveViewReactServer", () => {
     const strict = createLiveViewReactServer({ components, strictMode: true });
     const request = {
       component: "Greeting",
+      events: {},
       identifierPrefix: IDENTIFIER_PREFIX,
       props: { name: "strict" },
     };
@@ -204,6 +265,7 @@ describe("createLiveViewReactServer", () => {
 
     const html = await server.render({
       component: "WithPreloads",
+      events: {},
       identifierPrefix: IDENTIFIER_PREFIX,
     });
 

@@ -19,6 +19,7 @@ defmodule LiveViewReact.TestHelperTest do
     react = Test.get_react(html)
 
     assert react.props == %{"title" => "Hello"}
+    assert react.events == %{}
     assert react.transport_version == 1
     assert react.props_kind == "snapshot"
     assert react.props_diff == []
@@ -32,9 +33,9 @@ defmodule LiveViewReact.TestHelperTest do
     <div id="invalid" phx-hook="LiveViewReactHook" data-component="Test"
       data-liveview-react-version="1" data-props="{}"
       data-props-kind="snapshot" data-props-diff="" data-streams-kind="snapshot"
-      data-streams-diff="" data-slots="{}">
+      data-streams-diff="" data-events="{}" data-slots="{}">
       <div data-react-target
-        data-react-hydration='{"version":2,"component":"Test","identifierPrefix":"liveview-react-invalid-","props":{},"slots":{}}'>
+        data-react-hydration='{"version":2,"component":"Test","events":{},"identifierPrefix":"liveview-react-invalid-","props":{},"slots":{}}'>
       </div>
     </div>
     """
@@ -48,9 +49,9 @@ defmodule LiveViewReact.TestHelperTest do
     html = """
     <div id="mismatch" phx-hook="LiveViewReactHook" data-component="Current"
       data-liveview-react-version="1" data-props="{}" data-props-kind="snapshot" data-props-diff=""
-      data-streams-kind="snapshot" data-streams-diff="" data-slots="{}">
+      data-streams-kind="snapshot" data-streams-diff="" data-events="{}" data-slots="{}">
       <div data-react-target
-        data-react-hydration='{"version":1,"component":"Stale","identifierPrefix":"liveview-react-mismatch-","props":{},"slots":{}}'>
+        data-react-hydration='{"version":1,"component":"Stale","events":{},"identifierPrefix":"liveview-react-mismatch-","props":{},"slots":{}}'>
       </div>
     </div>
     """
@@ -64,7 +65,7 @@ defmodule LiveViewReact.TestHelperTest do
     html = """
     <div id="duplicate" phx-hook="LiveViewReactHook" data-component="Test"
       data-liveview-react-version="1" data-props="{}" data-props-kind="snapshot" data-props-diff=""
-      data-streams-kind="snapshot" data-streams-diff="" data-slots="{}">
+      data-streams-kind="snapshot" data-streams-diff="" data-events="{}" data-slots="{}">
       <div data-react-target></div><div data-react-target></div>
     </div>
     """
@@ -81,7 +82,7 @@ defmodule LiveViewReact.TestHelperTest do
       html = """
       <div id="version" phx-hook="LiveViewReactHook" data-component="Test" #{version_attr}
         data-props="{}" data-props-kind="snapshot" data-props-diff=""
-        data-streams-kind="snapshot" data-streams-diff="" data-slots="{}">
+        data-streams-kind="snapshot" data-streams-diff="" data-events="{}" data-slots="{}">
         <div data-react-target></div>
       </div>
       """

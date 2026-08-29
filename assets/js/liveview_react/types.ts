@@ -1,25 +1,32 @@
 import type { ComponentType, ExoticComponent, ReactNode } from "react";
 import type { RootOptions } from "react-dom/client";
 
-export type EventPayload = Readonly<Record<string, unknown>>;
+export interface JsonObject {
+  readonly [key: string]: JsonValue;
+}
 
-export type EventReplyHandler<TReply = unknown> = (
-  reply: TReply,
-  reference?: unknown,
-) => void;
+export type JsonArray = readonly JsonValue[];
+export type JsonValue = null | boolean | number | string | JsonArray | JsonObject;
+
+export type EventPayload = Readonly<Record<string, unknown>>;
 
 export type PushEvent = <TReply = unknown>(
   event: string,
   payload?: EventPayload,
-  onReply?: EventReplyHandler<TReply>,
-) => unknown;
+) => Promise<TReply>;
+
+export type LiveViewTarget = string | number | HTMLElement;
+
+export interface TargetedEventReply<TReply = unknown> {
+  readonly ref: number;
+  readonly reply: TReply;
+}
 
 export type PushEventTo = <TReply = unknown>(
-  target: string | HTMLElement,
+  target: LiveViewTarget,
   event: string,
   payload?: EventPayload,
-  onReply?: EventReplyHandler<TReply>,
-) => unknown;
+) => Promise<readonly PromiseSettledResult<TargetedEventReply<TReply>>[]>;
 
 export type HandleEvent = <TPayload = unknown>(
   event: string,
@@ -33,7 +40,7 @@ export type UploadFiles = FileList | readonly File[];
 export type Upload = (name: string, files: UploadFiles) => void;
 
 export type UploadTo = (
-  target: string | HTMLElement,
+  target: LiveViewTarget,
   name: string,
   files: UploadFiles,
 ) => void;

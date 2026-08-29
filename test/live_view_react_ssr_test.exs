@@ -71,6 +71,7 @@ defmodule LiveViewReact.SSRTest do
 
     request = %{
       component: "Counter",
+      events: %{},
       identifierPrefix: "liveview-react-counter-",
       props: %{count: 1, test_pid: self()},
       slots: %{"default" => "Count"}
@@ -116,7 +117,20 @@ defmodule LiveViewReact.SSRTest do
     Application.put_env(:liveview_react, :ssr_module, Renderer)
 
     assert_raise SSR.RenderError, ~r/Invalid SSR render request/, fn ->
-      SSR.render(%{component: "Counter", props: %{}, slots: %{}})
+      SSR.render(%{component: "Counter", events: %{}, props: %{}, slots: %{}})
+    end
+  end
+
+  test "rejects requests without the dedicated event metadata field" do
+    Application.put_env(:liveview_react, :ssr_module, Renderer)
+
+    assert_raise SSR.RenderError, ~r/expected component, events, identifierPrefix/, fn ->
+      SSR.render(%{
+        component: "Counter",
+        identifierPrefix: "liveview-react-counter-",
+        props: %{},
+        slots: %{}
+      })
     end
   end
 
@@ -171,6 +185,7 @@ defmodule LiveViewReact.SSRTest do
     Map.merge(
       %{
         component: "Counter",
+        events: %{},
         identifierPrefix: "liveview-react-counter-",
         props: %{},
         slots: %{}

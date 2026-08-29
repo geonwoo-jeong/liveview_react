@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useLiveViewReact } from "liveview_react";
+import { useLiveEvent, useLiveReact } from "liveview_react";
 
 export function LogList() {
-  const { handleEvent, pushEvent, removeHandleEvent } = useLiveViewReact();
+  const { pushEvent } = useLiveReact();
   const [items, setItems] = useState([]);
   const [showItems, setShowItems] = useState(true);
   const [body, setBody] = useState("");
@@ -16,13 +16,9 @@ export function LogList() {
 
   const resetItems = () => setItems([]);
 
-  useEffect(() => {
-    const eventRef = handleEvent("new_item", (item) => {
-      setItems((prevItems) => [item, ...prevItems]);
-    });
-
-    return () => removeHandleEvent(eventRef);
-  }, [handleEvent, removeHandleEvent]);
+  useLiveEvent("new_item", (item) => {
+    setItems((prevItems) => [item, ...prevItems]);
+  });
 
   return (
     <div className="flex flex-col space-y-3">

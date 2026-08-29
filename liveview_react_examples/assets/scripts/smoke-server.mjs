@@ -6,10 +6,12 @@ const bundleUrl = new URL(
 const { render } = await import(bundleUrl.href);
 const html = await render({
   component: "Simple",
+  events: {},
   identifierPrefix: "liveview-react-smoke-simple-",
 });
 const lazyHtml = await render({
   component: "Lazy",
+  events: {},
   identifierPrefix: "liveview-react-smoke-lazy-",
 });
 

@@ -12,6 +12,7 @@ export const createMockLiveViewHook = (
     : `mock-${++mockIdCounter}`;
   const attributes: Record<string, string> = {
     "data-liveview-react-version": "1",
+    "data-events": "{}",
     "data-props": "{}",
     "data-props-kind": "snapshot",
     "data-streams-kind": "snapshot",
@@ -51,8 +52,8 @@ export const createMockLiveViewHook = (
     el: mockElement,
     liveSocket,
     target,
-    pushEvent: vi.fn(),
-    pushEventTo: vi.fn(),
+    pushEvent: vi.fn(() => Promise.resolve(undefined)),
+    pushEventTo: vi.fn(() => Promise.resolve([])),
     handleEvent: vi.fn(),
     removeHandleEvent: vi.fn(),
     upload: vi.fn(),

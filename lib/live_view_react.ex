@@ -12,6 +12,7 @@ defmodule LiveViewReact do
   import Phoenix.HTML
 
   alias LiveViewReact.Encoder
+  alias LiveViewReact.Events
   alias LiveViewReact.Patch
   alias LiveViewReact.Slots
   alias LiveViewReact.SSR
@@ -48,6 +49,7 @@ defmodule LiveViewReact do
       data-props-diff={@props_diff}
       data-streams-diff={@streams_diff}
       data-streams-kind={@streams_kind}
+      data-events={json(@events)}
       data-slots={@slots |> Slots.base_encode_64() |> json()}
       phx-update="ignore"
       phx-hook="LiveViewReactHook"
@@ -122,6 +124,7 @@ defmodule LiveViewReact do
     stream_assigns = if transport_snapshot?, do: assigns, else: changed_assigns
 
     {raw_props, _} = extract(assigns, assigns, :props)
+    {events, events_changed?} = Events.extract(assigns, raw_props)
     props = Encoder.encode(raw_props, [])
     props_transport = build_props_transport(props, assigns, transport_snapshot? or not flags.diff)
     {streams, _} = extract(stream_assigns, assigns, :streams)
@@ -134,6 +137,7 @@ defmodule LiveViewReact do
 
     assigns
     |> Map.put(:props, props)
+    |> Map.put(:events, events)
     |> Map.put(:transport_version, @transport_version)
     |> Map.put(:props_payload, props_transport.snapshot)
     |> Map.put(:props_kind, props_transport.kind)
@@ -142,7 +146,7 @@ defmodule LiveViewReact do
     |> Map.put(:streams_kind, transport_kind(transport_snapshot?))
     |> Map.put(:slots, if(slots_changed?, do: Slots.rendered_slot_map(slots), else: %{}))
     |> put_ssr_render(flags)
-    |> mark_computed_changed(flags, slots_changed?)
+    |> mark_computed_changed(flags, slots_changed?, events_changed?)
   end
 
   defp transport_kind(true), do: "snapshot"
@@ -185,8 +189,9 @@ defmodule LiveViewReact do
   end
 
   # Marks the assigns we computed ourselves as changed so LiveView diffs them.
-  defp mark_computed_changed(assigns, flags, slots_changed?) do
+  defp mark_computed_changed(assigns, flags, slots_changed?, events_changed?) do
     computed_changed = %{
+      events: events_changed?,
       transport_version: true,
       props_payload: true,
       props_kind: true,
@@ -316,6 +321,7 @@ defmodule LiveViewReact do
 
   defp normalize_key(key, _val) when key in @reserved_assigns, do: :special
 
+  defp normalize_key("r-on:" <> _event_name, _value), do: :events
   defp normalize_key(_key, [%{__slot__: _}]), do: :slots
   defp normalize_key(key, val) when is_atom(key), do: key |> to_string() |> normalize_key(val)
   defp normalize_key(_key, %LiveStream{}), do: :streams
@@ -327,6 +333,7 @@ defmodule LiveViewReact do
   defp ssr_request(assigns) do
     %{
       component: assigns.component,
+      events: assigns.events,
       identifierPrefix: identifier_prefix(assigns.id),
       props: assigns.props,
       slots: assigns.slots

@@ -1,12 +1,24 @@
-import { createElement, type ComponentProps } from "react";
+import { createElement, type ComponentProps, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
 import { Link, type LinkProps } from "./link";
 
 function renderLink(props: LinkProps) {
   return renderToStaticMarkup(
     createElement(Link, props, props.children ?? "Link"),
   );
+}
+
+function parseAnchor(html: string): HTMLAnchorElement {
+  const anchor = new DOMParser()
+    .parseFromString(html, "text/html")
+    .querySelector("a");
+  if (!anchor) {
+    throw new Error("Expected rendered markup to contain an anchor");
+  }
+
+  return anchor;
 }
 
 describe("Link", () => {
@@ -29,13 +41,7 @@ describe("Link", () => {
     expect(html).toContain('href="https://example.com/report.pdf"');
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noreferrer"');
-    const anchor = new DOMParser()
-      .parseFromString(html, "text/html")
-      .querySelector("a");
-    if (!anchor) {
-      throw new Error("Expected rendered markup to contain an anchor");
-    }
-    expect(anchor?.hasAttribute("download")).toBe(true);
+    expect(parseAnchor(html).hasAttribute("download")).toBe(true);
     expect(html).not.toContain("data-phx-link");
   });
 
@@ -65,6 +71,26 @@ describe("Link", () => {
     expect(html).toContain('data-phx-link-state="replace"');
   });
 
+  it("preserves native target, download, rel, and consumer click handling", () => {
+    const onClick = vi.fn();
+    const element = Link({
+      patch: "/report.pdf",
+      target: "_blank",
+      download: "report.pdf",
+      rel: "noreferrer",
+      onClick,
+      children: "Report",
+    });
+    const html = renderToStaticMarkup(element);
+
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('download="report.pdf"');
+    expect(html).toContain('rel="noreferrer"');
+    expect(
+      (element as ReactElement<{ readonly onClick?: unknown }>).props.onClick,
+    ).toBe(onClick);
+  });
+
   it("rejects a missing destination at runtime", () => {
     expect(() =>
       renderToStaticMarkup(
@@ -83,5 +109,13 @@ describe("Link", () => {
     ).toThrow(
       "Link requires exactly one non-empty href, patch, or navigate destination",
     );
+  });
+
+  it("rejects history replacement for a browser href", () => {
+    expect(() =>
+      renderToStaticMarkup(
+        createElement(Link, { href: "/logout", replace: true } as never),
+      ),
+    ).toThrow("Link does not support replace with href");
   });
 });

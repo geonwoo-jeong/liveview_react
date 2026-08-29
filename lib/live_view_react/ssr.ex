@@ -22,9 +22,11 @@ defmodule LiveViewReact.SSR do
   """
 
   @type props :: %{optional(String.t() | atom) => any}
+  @type events :: %{optional(String.t()) => any}
   @type slots :: %{optional(String.t()) => any}
   @type request :: %{
           required(:component) => String.t(),
+          required(:events) => events,
           required(:identifierPrefix) => String.t(),
           required(:props) => props,
           required(:slots) => slots
@@ -41,14 +43,15 @@ defmodule LiveViewReact.SSR do
   def render(
         %{
           component: component,
+          events: events,
           identifierPrefix: identifier_prefix,
           props: props,
           slots: slots
         } = request
       )
-      when map_size(request) == 4 and is_binary(component) and component != "" and
-             is_binary(identifier_prefix) and identifier_prefix != "" and is_map(props) and
-             is_map(slots) do
+      when map_size(request) == 5 and is_binary(component) and component != "" and
+             is_map(events) and is_binary(identifier_prefix) and identifier_prefix != "" and
+             is_map(props) and is_map(slots) do
     case Application.get_env(:liveview_react, :ssr_module, nil) do
       nil ->
         raise LiveViewReact.SSR.NotConfigured
@@ -66,7 +69,7 @@ defmodule LiveViewReact.SSR do
   def render(_request) do
     raise LiveViewReact.SSR.RenderError,
       message:
-        "Invalid SSR render request: expected component, identifierPrefix, props, and slots"
+        "Invalid SSR render request: expected component, events, identifierPrefix, props, and slots"
   end
 
   defp parse_render_body(body) when is_binary(body), do: %{html: body}

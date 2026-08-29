@@ -25,6 +25,57 @@ interface NavigateLinkProps extends AnchorProps {
 
 export type LinkProps = BrowserLinkProps | PatchLinkProps | NavigateLinkProps;
 
+interface ParsedDestination {
+  readonly href: string;
+  readonly mode: "href" | "navigate" | "patch";
+  readonly replace: boolean;
+}
+
+function parseDestination(
+  href: unknown,
+  navigate: unknown,
+  patch: unknown,
+  replace: unknown,
+): ParsedDestination {
+  const destinations = [href, patch, navigate].filter(
+    (destination) => destination !== undefined,
+  );
+  if (
+    destinations.length !== 1 ||
+    typeof destinations[0] !== "string" ||
+    destinations[0].length === 0
+  ) {
+    throw new TypeError(
+      "Link requires exactly one non-empty href, patch, or navigate destination",
+    );
+  }
+
+  if (href !== undefined) {
+    if (replace !== undefined) {
+      throw new TypeError("Link does not support replace with href");
+    }
+    return { href: href as string, mode: "href", replace: false };
+  }
+
+  if (replace !== undefined && typeof replace !== "boolean") {
+    throw new TypeError("Link replace must be a boolean");
+  }
+
+  if (patch !== undefined) {
+    return {
+      href: patch as string,
+      mode: "patch",
+      replace: replace === true,
+    };
+  }
+
+  return {
+    href: navigate as string,
+    mode: "navigate",
+    replace: replace === true,
+  };
+}
+
 export function Link(props: LinkProps): ReactElement {
   const { children, href, navigate, patch, replace, ...anchorAttributes } =
     props as AnchorProps & {
@@ -34,56 +85,24 @@ export function Link(props: LinkProps): ReactElement {
       readonly patch?: unknown;
       readonly replace?: unknown;
     };
-  const destinations = [href, patch, navigate].filter(
-    (destination) => destination !== undefined,
-  );
+  const destination = parseDestination(href, navigate, patch, replace);
 
-  if (
-    destinations.length !== 1 ||
-    typeof destinations[0] !== "string" ||
-    destinations[0].length === 0 ||
-    (href !== undefined && replace !== undefined)
-  ) {
-    throw new TypeError(
-      "Link requires exactly one non-empty href, patch, or navigate destination",
-    );
-  }
-
-  if (typeof href === "string") {
+  if (destination.mode === "href") {
     return (
-      <a {...anchorAttributes} href={href}>
+      <a {...anchorAttributes} href={destination.href}>
         {children}
       </a>
     );
   }
 
-  if (typeof patch === "string") {
-    return (
-      <a
-        {...anchorAttributes}
-        href={patch}
-        data-phx-link="patch"
-        data-phx-link-state={replace === true ? "replace" : "push"}
-      >
-        {children}
-      </a>
-    );
-  }
-
-  if (typeof navigate === "string") {
-    return (
-      <a
-        {...anchorAttributes}
-        href={navigate}
-        data-phx-link="redirect"
-        data-phx-link-state={replace === true ? "replace" : "push"}
-      >
-        {children}
-      </a>
-    );
-  }
-
-  throw new TypeError(
-    "Link requires exactly one non-empty href, patch, or navigate destination",
+  return (
+    <a
+      {...anchorAttributes}
+      href={destination.href}
+      data-phx-link={destination.mode === "patch" ? "patch" : "redirect"}
+      data-phx-link-state={destination.replace ? "replace" : "push"}
+    >
+      {children}
+    </a>
   );
 }

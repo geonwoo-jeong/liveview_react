@@ -72,22 +72,79 @@ current `Phoenix.LiveView.Socket`. Every other assign—including `class`—is a
 React prop unless it is a reserved rendering attribute. The outer DOM element
 is transport-only and has no public styling attributes.
 
-Inside the React tree, `useLiveViewReact()` exposes the existing LiveView hook
+Inside the React tree, `useLiveReact()` exposes the existing LiveView hook
 bridge:
 
 ```tsx
-import { useLiveViewReact } from "liveview_react";
+import { useLiveReact } from "liveview_react";
 
 export default function Counter({ count }: { count: number }) {
-  const { pushEvent } = useLiveViewReact();
+  const { pushEvent } = useLiveReact();
+
+  async function increment() {
+    try {
+      await pushEvent("increment", { by: 1 });
+    } catch (error) {
+      console.error("Could not increment the counter", error);
+    }
+  }
 
   return (
-    <button type="button" onClick={() => pushEvent("increment", { by: 1 })}>
+    <button type="button" onClick={increment}>
       Count: {count}
     </button>
   );
 }
 ```
+
+`pushEvent` and `pushEventTo` expose the Promise APIs from the current
+LiveView hook. There is no callback overload.
+
+## Events and navigation
+
+Use `useLiveEvent` for server-pushed events. It keeps the latest handler and
+automatically removes the LiveView subscription when the component unmounts:
+
+```tsx
+import { useLiveEvent } from "liveview_react";
+
+useLiveEvent<{ message: string }>("notification", ({ message }) => {
+  console.info(message);
+});
+```
+
+`useEventReply` adds loading, result, error, cancellation, timeout, and stale
+reply handling around `pushEvent`:
+
+```tsx
+const search = useEventReply<{ items: readonly Item[] }>("search", {
+  timeout: 5_000,
+});
+
+await search.execute({ query });
+```
+
+`useLiveConnection()` reports `{ connected, reconnecting }` through a React
+external store. `useLiveNavigation()` exposes the current public
+`liveSocket.js().patch()` and `.navigate()` commands. The hook can render
+during SSR and hydration; invoking a command before the live bridge exists
+throws a clear error.
+
+For anchors, prefer the declarative `Link` component:
+
+```tsx
+import { Link } from "liveview_react";
+
+<Link patch="/users?page=2">Next</Link>
+<Link navigate="/settings" replace>Settings</Link>
+<Link href="/logout">Logout</Link>
+```
+
+`Link` emits LiveView's `data-phx-link` attributes and leaves click handling to
+LiveView's normal document delegation. Native modified-click, `target`,
+`download`, external-link, and consumer `onClick` behavior therefore remains
+on the anchor. The package also ships React JSX types for direct `phx-*`
+attributes such as `<button phx-click="increment">`.
 
 ## Server-side rendering
 

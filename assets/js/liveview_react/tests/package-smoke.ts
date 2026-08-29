@@ -64,6 +64,7 @@ try {
   for (const requiredPath of [
     "dist/index.js",
     "dist/index.d.ts",
+    "dist/react-phx.d.ts",
     "dist/server.js",
     "dist/server.d.ts",
     "dist/vite.js",
@@ -131,15 +132,27 @@ try {
     if (typeof client.createLiveViewReact !== "function") {
       throw new Error("Root export is missing createLiveViewReact");
     }
-    if (typeof client.useLiveViewReact !== "function") {
-      throw new Error("Root export is missing useLiveViewReact");
+    if (typeof client.useLiveReact !== "function") {
+      throw new Error("Root export is missing useLiveReact");
+    }
+    if (typeof client.useLiveEvent !== "function") {
+      throw new Error("Root export is missing useLiveEvent");
+    }
+    if (typeof client.useEventReply !== "function") {
+      throw new Error("Root export is missing useEventReply");
+    }
+    if (typeof client.useLiveConnection !== "function") {
+      throw new Error("Root export is missing useLiveConnection");
+    }
+    if (typeof client.useLiveNavigation !== "function") {
+      throw new Error("Root export is missing useLiveNavigation");
     }
     if (typeof client.Link !== "function") {
       throw new Error("Root export is missing Link");
     }
     const removedRootExports = [
       ["get", "Hooks"].join(""),
-      ["use", "Live", "React"].join(""),
+      ["use", "Live", "View", "React"].join(""),
     ];
     if (removedRootExports.some((name) => name in client)) {
       throw new Error("Root export still exposes a removed API");
@@ -177,12 +190,16 @@ try {
   );
 
   writeFileSync(
-    join(consumerDirectory, "consumer.ts"),
+    join(consumerDirectory, "consumer.tsx"),
     String.raw`
       import {
         createLiveViewReact,
         Link,
-        useLiveViewReact,
+        useEventReply,
+        useLiveConnection,
+        useLiveEvent,
+        useLiveNavigation,
+        useLiveReact,
         type ComponentRegistry,
       } from "liveview_react";
       import { createLiveViewReactServer } from "liveview_react/server";
@@ -196,12 +213,32 @@ try {
       runtime.hooks.LiveViewReactHook.mounted;
       createLiveViewReactServer({ components }).render({
         component: "Counter",
+        events: {},
         identifierPrefix: "liveview-react-package-smoke-",
         props: { count: 1 },
       });
+
+      function HookConsumer() {
+        const bridge = useLiveReact();
+        const reply: Promise<{ readonly ok: boolean }> =
+          bridge.pushEvent<{ readonly ok: boolean }>("save", { count: 1 });
+        void reply;
+        useLiveEvent<{ readonly count: number }>("count", ({ count }) => count);
+        useEventReply<{ readonly ok: boolean }>("save");
+        useLiveConnection();
+        useLiveNavigation();
+
+        return <button phx-click="increment" phx-value-count={1} />;
+      }
+
       liveViewReactPlugin();
+      void HookConsumer;
       void Link;
-      void useLiveViewReact;
+      void useEventReply;
+      void useLiveConnection;
+      void useLiveEvent;
+      void useLiveNavigation;
+      void useLiveReact;
     `,
   );
   writeFileSync(
@@ -209,6 +246,7 @@ try {
     `${JSON.stringify(
       {
         compilerOptions: {
+          jsx: "react-jsx",
           lib: ["ES2024", "DOM", "DOM.Iterable"],
           module: "ESNext",
           moduleResolution: "Bundler",
@@ -218,7 +256,7 @@ try {
           target: "ES2024",
           types: ["node"],
         },
-        include: ["consumer.ts"],
+        include: ["consumer.tsx"],
       },
       null,
       2,

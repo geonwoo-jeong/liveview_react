@@ -216,6 +216,7 @@ defmodule LiveViewReactTest do
       assert Jason.decode!(descriptor) == %{
                "version" => 1,
                "component" => "HydratedComponent",
+               "events" => %{},
                "identifierPrefix" => "liveview-react-hydrated-component-",
                "props" => %{"greeting" => "hello"},
                "slots" => %{"default" => "<em>SSR child</em>"}
@@ -241,6 +242,7 @@ defmodule LiveViewReactTest do
       assert react.hydration == %{
                "version" => 1,
                "component" => "HydratedStreamComponent",
+               "events" => %{},
                "identifierPrefix" => "liveview-react-hydrated-stream-component-",
                "props" => %{"title" => "Users"},
                "slots" => %{}

@@ -4,6 +4,13 @@ import { renderToString } from "react-dom/server";
 import { getRegistryEntry, loadComponent, normalizeRegistry } from "./registry";
 import { createComponentTree } from "./tree";
 import { createConnectionStore } from "./runtime/connection";
+import {
+  assertNoEventPropCollisions,
+  createUnavailableEventCallbacks,
+  mergeEventCallbackProps,
+  normalizeEventCommandMap,
+  type EventCommandMap,
+} from "./runtime/event-callbacks";
 import { normalizeRootOptions } from "./runtime/options";
 import { SERVER_BRIDGE_CONTEXT } from "./runtime/server-context";
 import type {
@@ -22,6 +29,7 @@ export interface CreateLiveViewReactServerOptions extends Pick<
 
 export interface ServerRenderRequest {
   readonly component: string;
+  readonly events: EventCommandMap;
   readonly identifierPrefix: string;
   readonly props?: ComponentProps;
   readonly slots?: SlotMap;
@@ -33,6 +41,7 @@ export interface LiveViewReactServer {
 
 interface NormalizedServerRenderRequest {
   readonly component: string;
+  readonly events: EventCommandMap;
   readonly identifierPrefix: string;
   readonly props: ComponentProps;
   readonly slots: SlotMap;
@@ -40,6 +49,7 @@ interface NormalizedServerRenderRequest {
 
 const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
   "component",
+  "events",
   "identifierPrefix",
   "props",
   "slots",
@@ -124,8 +134,15 @@ function normalizeRenderRequest(input: unknown): NormalizedServerRenderRequest {
     }
   }
 
+  const events = normalizeEventCommandMap(
+    input.events,
+    "server render events",
+  );
+  assertNoEventPropCollisions(props, events, "server render request");
+
   return Object.freeze({
     component: input.component,
+    events,
     identifierPrefix: input.identifierPrefix,
     props: Object.freeze({ ...props }),
     slots: Object.freeze({ ...slots }) as SlotMap,
@@ -141,7 +158,7 @@ export function createLiveViewReactServer(
 
   return Object.freeze({
     async render(request: ServerRenderRequest): Promise<string> {
-      const { component, identifierPrefix, props, slots } =
+      const { component, events, identifierPrefix, props, slots } =
         normalizeRenderRequest(request);
       const entry = getRegistryEntry(registry, component);
       const Component = await loadComponent(component, entry);
@@ -150,7 +167,11 @@ export function createLiveViewReactServer(
       try {
         const tree = createComponentTree({
           Component,
-          props,
+          props: mergeEventCallbackProps(
+            props,
+            createUnavailableEventCallbacks(events),
+            "server render request",
+          ),
           children: getChildren(slots),
           componentName: component,
           connectionStore,

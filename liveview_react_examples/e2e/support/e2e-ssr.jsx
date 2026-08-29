@@ -1,10 +1,10 @@
 import { useId } from "react";
 import { preload, preloadModule } from "react-dom";
-import { useLiveViewReact } from "liveview_react";
+import { useLiveReact } from "liveview_react";
 
 export function E2ESSRProbe({ phase }) {
   const inputId = useId();
-  const { el } = useLiveViewReact();
+  const { el } = useLiveReact();
 
   preload("/assets/app.css", { as: "style" });
   preloadModule("/assets/app.js", { as: "script" });
