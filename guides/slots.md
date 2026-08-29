@@ -65,11 +65,11 @@ require Phoenix or React to own a nested interactive subtree:
 - nested LiveComponents
 - nested LiveViewReact roots
 
-These validations run during server rendering before the HTML reaches the
-browser. They define an interoperability boundary, not an HTML sanitizer.
-Dynamic HEEx values are safe because Phoenix escapes them before LiveViewReact
-encodes the rendered slot. Do not construct SSR render requests with untrusted
-raw HTML or mark untrusted values as `Phoenix.HTML.Safe`.
+These validations run during server rendering and again in the browser runtime.
+They define an interoperability boundary, not an HTML sanitizer. Dynamic HEEx
+values are safe because Phoenix escapes them before LiveViewReact encodes the
+rendered slot. Do not construct SSR render requests with untrusted raw HTML or
+mark untrusted values as `Phoenix.HTML.Safe`.
 
 ## Collisions
 
