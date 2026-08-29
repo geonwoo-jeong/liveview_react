@@ -1,11 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 
+import {
+  assertNoEventPropCollisions,
+  normalizeEventCommandMap,
+} from "./runtime/event-callbacks";
 import type { ServerRenderRequest } from "./server";
 
 const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
   "component",
+  "events",
   "identifierPrefix",
   "props",
   "slots",
@@ -122,6 +127,19 @@ function parseRenderRequest(value: unknown): ServerRenderRequest {
     throw new RequestError(400, "props must be an object");
   }
 
+  let events: ServerRenderRequest["events"];
+  try {
+    events = normalizeEventCommandMap(value.events, "render request events");
+    assertNoEventPropCollisions(
+      (value.props ?? {}) as Record<string, unknown>,
+      events,
+      "render request",
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new RequestError(400, message);
+  }
+
   if (value.slots !== undefined) {
     if (!isRecord(value.slots)) {
       throw new RequestError(400, "slots must be an object");
@@ -136,6 +154,7 @@ function parseRenderRequest(value: unknown): ServerRenderRequest {
 
   const renderRequest: ServerRenderRequest = {
     component: value.component,
+    events,
     identifierPrefix: value.identifierPrefix,
     ...(value.props ? { props: value.props } : {}),
     ...(value.slots ? { slots: value.slots as Record<string, string> } : {}),

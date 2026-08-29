@@ -25,6 +25,8 @@ defmodule LiveViewReact.Test do
   """
 
   @compile {:no_warn_undefined, Floki}
+  @event_prop ~r/\Aon[A-Z][A-Za-z0-9]*\z/
+  @event_operation ~r/\A[a-z][a-z0-9_]*\z/
 
   @doc """
   Extracts React component information from a LiveView or HTML string.
@@ -35,6 +37,7 @@ defmodule LiveViewReact.Test do
     * `:component` - The registry component name
     * `:id` - The required unique component identifier
     * `:props` - The decoded props passed to the component
+    * `:events` - The encoded Phoenix JS command chains keyed by React callback prop
     * `:slots` - Base64 encoded slot content
     * `:ssr` - Boolean indicating if server-side rendering was performed
     * `:hydration` - The decoded immutable SSR hydration descriptor, or `nil`
@@ -77,6 +80,7 @@ defmodule LiveViewReact.Test do
 
       %{
         props: decode_props(attr(react, "data-props")),
+        events: decode_events(attr(react, "data-events")),
         component: component,
         id: id,
         slots: extract_base64_slots(attr(react, "data-slots")),
@@ -95,6 +99,15 @@ defmodule LiveViewReact.Test do
 
   defp decode_props(nil), do: nil
   defp decode_props(props), do: LiveViewReact.Patch.decode_object(props)
+
+  defp decode_events(events) when is_binary(events) do
+    case Jason.decode!(events) do
+      decoded when is_map(decoded) -> decoded
+      _decoded -> raise "LiveViewReact data-events must contain a JSON object"
+    end
+  end
+
+  defp decode_events(_events), do: raise("LiveViewReact data-events must contain a JSON object")
 
   defp decode_transport_version("1"), do: 1
 
@@ -182,15 +195,16 @@ defmodule LiveViewReact.Test do
          %{
            "version" => 1,
            "component" => component,
+           "events" => events,
            "identifierPrefix" => identifier_prefix,
            "props" => props,
            "slots" => slots
          } = descriptor
        )
-       when map_size(descriptor) == 5 and is_binary(component) and component != "" and
+       when map_size(descriptor) == 6 and is_binary(component) and component != "" and
               is_binary(identifier_prefix) and identifier_prefix != "" and is_map(props) and
-              is_map(slots) do
-    if Enum.all?(slots, fn {name, html} -> is_binary(name) and is_binary(html) end) do
+              is_map(slots) and is_map(events) do
+    if valid_string_map?(slots) and valid_event_map?(events) do
       descriptor
     else
       raise "Invalid data-react-hydration descriptor"
@@ -199,6 +213,27 @@ defmodule LiveViewReact.Test do
 
   defp validate_hydration_descriptor!(_descriptor) do
     raise "Invalid data-react-hydration descriptor"
+  end
+
+  defp valid_string_map?(map) do
+    Enum.all?(map, fn {name, value} -> is_binary(name) and is_binary(value) end)
+  end
+
+  defp valid_event_map?(map) do
+    Enum.all?(map, fn
+      {name, commands} when is_binary(name) and is_list(commands) ->
+        Regex.match?(@event_prop, name) and
+          Enum.all?(commands, fn
+            [operation, options] when is_binary(operation) and is_map(options) ->
+              Regex.match?(@event_operation, operation)
+
+            _command ->
+              false
+          end)
+
+      _entry ->
+        false
+    end)
   end
 
   defp validate_hydration_component!(nil, _component), do: :ok

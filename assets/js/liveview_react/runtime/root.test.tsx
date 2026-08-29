@@ -1,7 +1,7 @@
 import { act, memo, useEffect, useId, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useLiveViewReact } from "../context";
+import { useLiveReact } from "../context";
 import { createLiveViewReactServer } from "../server";
 import type {
   LiveViewReactContextValue,
@@ -11,12 +11,17 @@ import { applyPatch } from "../transport/jsonPatch";
 import { createIdentifierPrefix } from "./identifier-prefix";
 import { RootController, type RootRenderSnapshot } from "./root";
 
-function createContext(element: HTMLElement): LiveViewReactContextValue {
+function createContext(
+  element: HTMLElement,
+  liveSocket: unknown = null,
+): LiveViewReactContextValue {
   return {
     el: element,
-    liveSocket: null,
-    pushEvent: vi.fn(),
-    pushEventTo: vi.fn(),
+    liveSocket,
+    pushEvent: vi.fn(() =>
+      Promise.resolve(undefined),
+    ) as unknown as LiveViewReactContextValue["pushEvent"],
+    pushEventTo: vi.fn(() => Promise.resolve([])),
     handleEvent: vi.fn(),
     removeHandleEvent: vi.fn(),
     upload: vi.fn(),
@@ -24,8 +29,11 @@ function createContext(element: HTMLElement): LiveViewReactContextValue {
   };
 }
 
-function snapshot(props: Record<string, unknown>): RootRenderSnapshot {
-  return { children: [], props };
+function snapshot(
+  props: Record<string, unknown>,
+  events: RootRenderSnapshot["events"] = {},
+): RootRenderSnapshot {
+  return { children: [], events, props };
 }
 
 function createController(
@@ -34,16 +42,18 @@ function createController(
   options: LiveViewReactRootOptions & {
     readonly hydrate?: boolean;
     readonly hydrationSnapshot?: RootRenderSnapshot;
+    readonly liveSocket?: unknown;
   } = {},
 ) {
   const element = document.createElement("div");
   element.id = "react-root";
   element.append(target);
+  const { liveSocket = null, ...rootOptions } = options;
 
   return new RootController({
-    ...options,
+    ...rootOptions,
     componentName: "Stateful",
-    context: createContext(element),
+    context: createContext(element, liveSocket),
     element,
     hydrate: options.hydrate === true,
     initialSnapshot,
@@ -123,6 +133,55 @@ describe("RootController", () => {
     await act(async () => controller.destroy());
   });
 
+  it("keeps event callbacks stable and invalidates stale references", async () => {
+    const exec = vi.fn();
+    const render = vi.fn();
+    let retained: ((payload?: Record<string, unknown>) => void) | undefined;
+    const EventProbe = memo(function EventProbe({
+      onIncrement,
+    }: {
+      readonly onIncrement: (payload?: Record<string, unknown>) => void;
+    }) {
+      render();
+      retained = onIncrement;
+      return <button onClick={() => onIncrement({ client: 2 })}>run</button>;
+    });
+    const initialEvents = {
+      onIncrement: [["push", { event: "increment", value: { static: 1 } }]],
+    } as const;
+    const target = document.createElement("div");
+    const controller = createController(target, snapshot({}, initialEvents), {
+      liveSocket: { js: () => ({ exec }) },
+    });
+
+    await act(async () => controller.mount(EventProbe));
+    const first = retained!;
+    await act(async () => controller.update(snapshot({}, initialEvents)));
+
+    expect(retained).toBe(first);
+    expect(render).toHaveBeenCalledTimes(1);
+
+    await act(async () => target.querySelector("button")?.click());
+    expect(exec).toHaveBeenCalledWith(expect.any(HTMLElement), [
+      ["push", { event: "increment", value: { static: 1, client: 2 } }],
+    ]);
+
+    const changedEvents = {
+      onIncrement: [["push", { event: "increment-v2" }]],
+    } as const;
+    await act(async () => controller.update(snapshot({}, changedEvents)));
+    const changed = retained!;
+    expect(changed).not.toBe(first);
+    expect(render).toHaveBeenCalledTimes(2);
+
+    first();
+    expect(exec).toHaveBeenCalledTimes(1);
+
+    await act(async () => controller.destroy());
+    changed();
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
+
   it("unmounts effects exactly once when destroy is repeated", async () => {
     const cleanup = vi.fn();
     function Effectful() {
@@ -168,7 +227,7 @@ describe("RootController", () => {
 
   it("places the custom wrapper inside the bridge provider", async () => {
     function Wrapper({ children }: { readonly children: ReactNode }) {
-      const { el } = useLiveViewReact();
+      const { el } = useLiveReact();
       return <section data-owner={el?.id}>{children}</section>;
     }
 
@@ -232,6 +291,7 @@ describe("RootController", () => {
     });
     target.innerHTML = await server.render({
       component: "IdentifierProbe",
+      events: {},
       identifierPrefix: createIdentifierPrefix("react-root"),
     });
     const serverInput = target.querySelector("input");
@@ -251,9 +311,46 @@ describe("RootController", () => {
     await act(async () => controller.destroy());
   });
 
+  it("switches event callbacks from hydration failures to the live executor", async () => {
+    const callbacks: Array<() => void> = [];
+    const exec = vi.fn();
+    const events = {
+      onIncrement: [["push", { event: "increment" }]],
+    } as const;
+    function EventProbe({ onIncrement }: { readonly onIncrement: () => void }) {
+      callbacks.push(onIncrement);
+      return <button>increment</button>;
+    }
+
+    const target = document.createElement("div");
+    const server = createLiveViewReactServer({
+      components: { EventProbe: { component: EventProbe } },
+    });
+    target.innerHTML = await server.render({
+      component: "EventProbe",
+      events,
+      identifierPrefix: createIdentifierPrefix("react-root"),
+    });
+    callbacks.length = 0;
+    const controller = createController(target, snapshot({}, events), {
+      hydrate: true,
+      hydrationSnapshot: snapshot({}, events),
+      liveSocket: { js: () => ({ exec }) },
+    });
+
+    await act(async () => controller.mount(EventProbe));
+
+    expect(() => callbacks[0]?.()).toThrow(
+      "unavailable during server rendering or hydration",
+    );
+    expect(() => callbacks.at(-1)?.()).not.toThrow();
+    expect(exec).toHaveBeenCalledTimes(1);
+    await act(async () => controller.destroy());
+  });
+
   it("uses server-visible context during hydration before publishing the live bridge", async () => {
     function ContextProbe() {
-      const context = useLiveViewReact();
+      const context = useLiveReact();
       contexts.push(context);
       return <p>{context.el?.id ?? "server"}</p>;
     }

@@ -18,6 +18,7 @@ import {
   readChildren,
   readComponentName,
   readElementId,
+  readEvents,
   readInitialProps,
   readInitialStreams,
   readHydrationSnapshot,
@@ -25,6 +26,7 @@ import {
   readNextStreams,
 } from "./attrs";
 import { createLiveViewBridge, type LiveViewHookHost } from "./bridge";
+import type { EventCommandMap } from "./event-callbacks";
 import { RootController, type RootRenderSnapshot } from "./root";
 
 export interface LiveViewReactHookDefinition {
@@ -71,6 +73,7 @@ class HookRuntime {
   readonly #liveSocket: unknown;
   readonly #root: RootController;
   #destroyed = false;
+  #events: EventCommandMap;
   #loadGeneration = 0;
   #props: ComponentProps;
   #recovering = false;
@@ -83,6 +86,7 @@ class HookRuntime {
     this.#elementId = readElementId(hook.el);
     this.#liveSocket = hook.liveSocket;
     this.#props = readInitialProps(hook.el);
+    this.#events = readEvents(hook.el);
     this.#streams = readInitialStreams(hook.el);
     const target = findReactTarget(hook.el);
     const hydrationSnapshot = readHydrationSnapshot(
@@ -151,10 +155,12 @@ class HookRuntime {
 
     let nextProps: ComponentProps;
     let nextStreams: ComponentProps;
+    let nextEvents: EventCommandMap;
 
     try {
       nextProps = readNextProps(this.#element, this.#props);
       nextStreams = readNextStreams(this.#element, this.#streams);
+      nextEvents = readEvents(this.#element);
     } catch (error: unknown) {
       if (
         error instanceof UnsupportedTransportVersionError ||
@@ -167,13 +173,14 @@ class HookRuntime {
     }
 
     try {
-      this.#root.update(this.#snapshot(nextProps, nextStreams));
+      this.#root.update(this.#snapshot(nextProps, nextStreams, nextEvents));
     } catch (error: unknown) {
       this.#failUpdate(error);
     }
 
     this.#props = nextProps;
     this.#streams = nextStreams;
+    this.#events = nextEvents;
     this.#recovering = false;
   }
 
@@ -269,9 +276,11 @@ class HookRuntime {
   #snapshot(
     props: ComponentProps = this.#props,
     streams: ComponentProps = this.#streams,
+    events: EventCommandMap = this.#events,
   ): RootRenderSnapshot {
     return Object.freeze({
       children: readChildren(this.#element),
+      events,
       props: Object.freeze({ ...props, ...streams }),
     });
   }

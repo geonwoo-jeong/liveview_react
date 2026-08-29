@@ -14,11 +14,20 @@ import type {
   LiveViewReactRootOptions,
 } from "../types";
 import { createConnectionStore, type ConnectionStore } from "./connection";
+import {
+  assertNoEventPropCollisions,
+  createUnavailableEventCallbacks,
+  EventCallbackCache,
+  mergeEventCallbackProps,
+  normalizeEventCommandMap,
+  type EventCommandMap,
+} from "./event-callbacks";
 import { createIdentifierPrefix } from "./identifier-prefix";
 import { SERVER_BRIDGE_CONTEXT } from "./server-context";
 
 export interface RootRenderSnapshot {
   readonly children: readonly ReactNode[];
+  readonly events: EventCommandMap;
   readonly props: ComponentProps;
 }
 
@@ -33,9 +42,17 @@ export interface RootControllerOptions extends LiveViewReactRootOptions {
 }
 
 function copySnapshot(snapshot: RootRenderSnapshot): RootRenderSnapshot {
+  const props = Object.freeze({ ...snapshot.props });
+  const events = normalizeEventCommandMap(
+    snapshot.events,
+    "root render events",
+  );
+  assertNoEventPropCollisions(props, events, "root render snapshot");
+
   return Object.freeze({
     children: Object.freeze([...snapshot.children]),
-    props: Object.freeze({ ...snapshot.props }),
+    events,
+    props,
   });
 }
 
@@ -59,6 +76,7 @@ export class RootController {
   readonly #connectionStore: ConnectionStore;
   readonly #context: LiveViewReactContextValue;
   readonly #element: HTMLElement;
+  readonly #eventCallbacks: EventCallbackCache;
   readonly #hydrate: boolean;
   readonly #reactOptions: RootOptions;
   readonly #strictMode: boolean;
@@ -78,6 +96,10 @@ export class RootController {
     this.#connectionStore = createConnectionStore();
     this.#context = options.context;
     this.#element = options.element;
+    this.#eventCallbacks = new EventCallbackCache({
+      element: options.element,
+      liveSocket: options.context.liveSocket,
+    });
     this.#hydrate = options.hydrate;
     this.#reactOptions = Object.freeze(createRootOptions(options));
     if (options.hydrate && !options.hydrationSnapshot) {
@@ -153,6 +175,7 @@ export class RootController {
 
     this.#destroyed = true;
     this.#connectionStore.destroy();
+    this.#eventCallbacks.destroy();
     this.#hydrating = false;
     const root = this.#root;
     this.#root = null;
@@ -182,6 +205,9 @@ export class RootController {
     }
 
     const hydrating = onHydrated !== undefined;
+    const eventCallbacks = hydrating
+      ? createUnavailableEventCallbacks(snapshot.events)
+      : this.#eventCallbacks.update(snapshot.events);
     return createComponentTree({
       Component: this.#Component,
       children: snapshot.children,
@@ -190,7 +216,11 @@ export class RootController {
       context: hydrating ? SERVER_BRIDGE_CONTEXT : this.#context,
       element: hydrating ? null : this.#element,
       ...(onHydrated ? { onHydrated } : {}),
-      props: snapshot.props,
+      props: mergeEventCallbackProps(
+        snapshot.props,
+        eventCallbacks,
+        "root render snapshot",
+      ),
       strictMode: this.#strictMode,
       ...(this.#wrapRoot ? { wrapRoot: this.#wrapRoot } : {}),
     });

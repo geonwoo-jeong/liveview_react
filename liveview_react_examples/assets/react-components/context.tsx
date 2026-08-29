@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useLiveViewReact } from "liveview_react";
+import { useLiveReact } from "liveview_react";
 
 export function Context({ count }: { count: number }) {
   const [amount, setAmount] = useState(1);
-  const { pushEvent } = useLiveViewReact();
+  const { pushEvent } = useLiveReact();
 
   return (
     <div className="flex flex-col justify-center items-center gap-4">

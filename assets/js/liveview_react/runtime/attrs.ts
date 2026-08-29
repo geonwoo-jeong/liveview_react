@@ -10,15 +10,22 @@ import {
   readTransportKind,
 } from "../transport/protocol";
 import type { ComponentProps, SlotMap } from "../types";
+import {
+  assertNoEventPropCollisions,
+  normalizeEventCommandMap,
+  type EventCommandMap,
+} from "./event-callbacks";
 import { createIdentifierPrefix } from "./identifier-prefix";
 
 export interface HydrationSnapshot {
   readonly children: readonly ReactNode[];
+  readonly events: EventCommandMap;
   readonly props: ComponentProps;
 }
 
 const HYDRATION_FIELDS: readonly string[] = Object.freeze([
   "component",
+  "events",
   "identifierPrefix",
   "props",
   "slots",
@@ -77,6 +84,24 @@ export function readInitialProps(element: HTMLElement): ComponentProps {
   }
 
   return readSnapshot(element);
+}
+
+export function readEvents(element: HTMLElement): EventCommandMap {
+  const encodedEvents = element.getAttribute("data-events");
+  if (encodedEvents === null) {
+    throw new Error('LiveViewReactHook requires a "data-events" attribute');
+  }
+
+  let events: unknown;
+  try {
+    events = JSON.parse(encodedEvents);
+  } catch (error: unknown) {
+    throw new TypeError("data-events must contain valid JSON", {
+      cause: error,
+    });
+  }
+
+  return normalizeEventCommandMap(events, "data-events");
 }
 
 export function readNextProps(
@@ -228,9 +253,15 @@ export function readHydrationSnapshot(
     throw new TypeError("data-react-hydration props must be an object");
   }
 
+  const events = normalizeEventCommandMap(
+    value.events,
+    "data-react-hydration events",
+  );
+  assertNoEventPropCollisions(value.props, events, "data-react-hydration");
   const slots = validateSlotMap(value.slots, "data-react-hydration slots");
   return Object.freeze({
     children: createChildren(slots.default),
+    events,
     props: Object.freeze({ ...value.props }),
   });
 }

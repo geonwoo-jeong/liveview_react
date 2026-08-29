@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useLiveViewReact } from "liveview_react";
+import { useLiveReact } from "liveview_react";
 
 export function StreamDemo({ messages = [] }) {
-  const { pushEvent } = useLiveViewReact();
+  const { pushEvent } = useLiveReact();
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
