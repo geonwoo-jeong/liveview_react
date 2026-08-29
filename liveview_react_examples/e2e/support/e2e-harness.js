@@ -13,6 +13,7 @@ let audit = Object.freeze({
     activeListeners: 0,
     deliveries: 0,
   }),
+  hydrationMounts: Object.freeze([]),
   transport: Object.freeze({ corruptions: 0 }),
   hookCallbacks: Object.freeze([]),
 });
@@ -114,6 +115,22 @@ function recordHookCallback(lifecycle, element) {
   });
 }
 
+function recordHydrationMount(element) {
+  const target = element.querySelector(":scope > [data-react-target]");
+  const input = target?.querySelector("input");
+  const entry = Object.freeze({
+    rootId: element.id,
+    descriptorPresent: target?.hasAttribute("data-react-hydration") ?? false,
+    childElementCount: target?.childElementCount ?? -1,
+    inputId: input?.id ?? null,
+  });
+
+  audit = Object.freeze({
+    ...audit,
+    hydrationMounts: Object.freeze([...audit.hydrationMounts, entry]),
+  });
+}
+
 async function resolveLazy(gate) {
   const releases = pendingLazy[gate];
   if (!releases) throw new Error(`Unknown lazy gate: ${gate}`);
@@ -150,9 +167,17 @@ function wrapHookCallback(hook, lifecycle) {
   };
 }
 
+function wrapHookMount(hook) {
+  return function (...args) {
+    recordHydrationMount(this.el);
+    return hook.mounted.apply(this, args);
+  };
+}
+
 export function auditLiveViewReactHook(hook) {
   return Object.freeze({
     ...hook,
+    mounted: wrapHookMount(hook),
     updated: wrapHookCallback(hook, "updated"),
     disconnected: wrapHookCallback(hook, "disconnected"),
     reconnected: wrapHookCallback(hook, "reconnected"),

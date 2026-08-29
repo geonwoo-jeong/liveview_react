@@ -33,6 +33,7 @@ defmodule LiveViewReactExamplesWeb.Router do
     if Application.compile_env(:liveview_react_examples, :e2e, false) do
       live "/e2e/lifecycle", LiveLifecycleE2E
       live "/e2e/lifecycle/destination", LiveLifecycleDestination
+      live "/e2e/ssr", LiveSSRE2E
     end
   end
 end

@@ -69,14 +69,16 @@ defmodule LiveViewReact.Test do
         |> find_component!(opts)
 
       component = attr(react, "data-component")
+      id = attr(react, "id")
       react_target = direct_react_target!(react)
       hydration = decode_hydration_descriptor(react_target)
       validate_hydration_component!(hydration, component)
+      validate_hydration_identifier_prefix!(hydration, id)
 
       %{
         props: decode_props(attr(react, "data-props")),
         component: component,
-        id: attr(react, "id"),
+        id: id,
         slots: extract_base64_slots(attr(react, "data-slots")),
         ssr: hydration != nil,
         hydration: hydration,
@@ -180,12 +182,14 @@ defmodule LiveViewReact.Test do
          %{
            "version" => 1,
            "component" => component,
+           "identifierPrefix" => identifier_prefix,
            "props" => props,
            "slots" => slots
          } = descriptor
        )
-       when map_size(descriptor) == 4 and is_binary(component) and component != "" and
-              is_map(props) and is_map(slots) do
+       when map_size(descriptor) == 5 and is_binary(component) and component != "" and
+              is_binary(identifier_prefix) and identifier_prefix != "" and is_map(props) and
+              is_map(slots) do
     if Enum.all?(slots, fn {name, html} -> is_binary(name) and is_binary(html) end) do
       descriptor
     else
@@ -203,5 +207,19 @@ defmodule LiveViewReact.Test do
 
   defp validate_hydration_component!(_hydration, _component) do
     raise "data-react-hydration component must match data-component"
+  end
+
+  defp validate_hydration_identifier_prefix!(nil, _id), do: :ok
+
+  defp validate_hydration_identifier_prefix!(
+         %{"identifierPrefix" => "liveview-react-" <> rest},
+         id
+       )
+       when rest == id <> "-" do
+    :ok
+  end
+
+  defp validate_hydration_identifier_prefix!(_hydration, _id) do
+    raise "data-react-hydration identifierPrefix must match the root id"
   end
 end

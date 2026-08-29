@@ -4,6 +4,12 @@ import type { Plugin } from "vite";
 import type { ServerRenderRequest } from "./server";
 
 const DEFAULT_MAX_BODY_BYTES = 1_048_576;
+const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
+  "component",
+  "identifierPrefix",
+  "props",
+  "slots",
+]);
 
 export interface LiveViewReactPluginOptions {
   readonly entrypoint?: string;
@@ -87,8 +93,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseRenderRequest(value: unknown): ServerRenderRequest {
-  if (!isRecord(value) || typeof value.component !== "string") {
-    throw new RequestError(400, "component must be a string");
+  if (!isRecord(value)) {
+    throw new RequestError(400, "request body must be an object");
+  }
+
+  const unknownField = Object.keys(value).find(
+    (key) => !SERVER_RENDER_FIELDS.includes(key),
+  );
+  if (unknownField) {
+    throw new RequestError(
+      400,
+      `Unknown render request field "${unknownField}"`,
+    );
+  }
+
+  if (typeof value.component !== "string" || value.component.length === 0) {
+    throw new RequestError(400, "component must be a non-empty string");
+  }
+
+  if (
+    typeof value.identifierPrefix !== "string" ||
+    value.identifierPrefix.length === 0
+  ) {
+    throw new RequestError(400, "identifierPrefix must be a non-empty string");
   }
 
   if (value.props !== undefined && !isRecord(value.props)) {
@@ -107,11 +134,13 @@ function parseRenderRequest(value: unknown): ServerRenderRequest {
     }
   }
 
-  return {
+  const renderRequest: ServerRenderRequest = {
     component: value.component,
-    props: value.props,
-    slots: value.slots,
-  } as ServerRenderRequest;
+    identifierPrefix: value.identifierPrefix,
+    ...(value.props ? { props: value.props } : {}),
+    ...(value.slots ? { slots: value.slots as Record<string, string> } : {}),
+  };
+  return renderRequest;
 }
 
 function resolveRenderer(

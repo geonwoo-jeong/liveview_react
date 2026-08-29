@@ -13,6 +13,11 @@ config :liveview_react_examples, LiveViewReactExamplesWeb.Endpoint,
   server: false
 
 if e2e? do
+  config :liveview_react,
+    ssr: true,
+    ssr_module: LiveViewReact.SSR.ViteJS,
+    vite_host: "http://127.0.0.1:4011"
+
   config :liveview_react_examples,
     vite: [dev_server: true, url: "http://127.0.0.1:4011"]
 

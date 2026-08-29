@@ -1,5 +1,6 @@
 import { auditLiveViewReactHook, createDelayedLoader } from "./e2e-harness";
 import { E2ELifecycleProbe, E2EStrictModeProbe } from "./e2e-lifecycle";
+import { E2ESSRProbe } from "./e2e-ssr";
 
 export { auditLiveViewReactHook };
 
@@ -14,6 +15,7 @@ export function e2eConnectParams() {
 export default {
   E2ELifecycleProbe: { component: E2ELifecycleProbe },
   E2EStrictModeProbe: { component: E2EStrictModeProbe },
+  E2ESSRProbe: { component: E2ESSRProbe },
   E2EDelayedUpdate: {
     load: createDelayedLoader("update", () => import("./e2e-delayed")),
   },

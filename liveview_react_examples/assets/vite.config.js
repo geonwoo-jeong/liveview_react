@@ -30,7 +30,9 @@ export default defineConfig(({ command, isSsrBuild }) => {
     ],
     ssr: {
       // The production Node renderer ships as one self-contained ESM bundle.
-      noExternal: true,
+      // During development, Node loads React's CommonJS runtime directly while
+      // Vite transforms the linked liveview_react package.
+      noExternal: isDev ? ["liveview_react"] : true,
     },
     resolve: {
       alias: {

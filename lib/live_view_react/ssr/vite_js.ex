@@ -69,7 +69,7 @@ defmodule LiveViewReact.SSR.ViteJS do
     end
   end
 
-  defp response_error(500, _reason, body) do
+  defp response_error(status, reason, body) do
     case Jason.decode(body) do
       {:ok,
        %{
@@ -79,15 +79,14 @@ defmodule LiveViewReact.SSR.ViteJS do
            "frame" => frame
          }
        }} ->
-        "#{message}\n#{file}:#{line}:#{column}\n#{frame}"
+        "Vite SSR failed: #{message}\n#{file}:#{line}:#{column}\n#{frame}"
+
+      {:ok, %{"error" => %{"message" => message}}} when is_binary(message) ->
+        "Vite SSR failed with status #{status}: #{message}"
 
       _ ->
-        "Vite SSR failed with status 500: #{body}"
+        "Vite SSR failed with status #{status} #{reason}: #{body}"
     end
-  end
-
-  defp response_error(status, reason, body) do
-    "Vite SSR failed with status #{status} #{reason}: #{body}"
   end
 
   defp request_timeouts! do

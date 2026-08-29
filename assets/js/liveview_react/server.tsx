@@ -5,10 +5,10 @@ import { getRegistryEntry, loadComponent, normalizeRegistry } from "./registry";
 import { createComponentTree } from "./tree";
 import { createConnectionStore } from "./runtime/connection";
 import { normalizeRootOptions } from "./runtime/options";
+import { SERVER_BRIDGE_CONTEXT } from "./runtime/server-context";
 import type {
   ComponentProps,
   ComponentRegistry,
-  LiveViewReactContextValue,
   LiveViewReactRootOptions,
   SlotMap,
 } from "./types";
@@ -22,6 +22,7 @@ export interface CreateLiveViewReactServerOptions extends Pick<
 
 export interface ServerRenderRequest {
   readonly component: string;
+  readonly identifierPrefix: string;
   readonly props?: ComponentProps;
   readonly slots?: SlotMap;
 }
@@ -32,32 +33,17 @@ export interface LiveViewReactServer {
 
 interface NormalizedServerRenderRequest {
   readonly component: string;
+  readonly identifierPrefix: string;
   readonly props: ComponentProps;
   readonly slots: SlotMap;
 }
 
 const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
   "component",
+  "identifierPrefix",
   "props",
   "slots",
 ]);
-
-function unavailableDuringServerRender(): never {
-  throw new Error(
-    "LiveView bridge methods are unavailable during server rendering",
-  );
-}
-
-const serverContext: LiveViewReactContextValue = Object.freeze({
-  el: null,
-  liveSocket: null,
-  pushEvent: unavailableDuringServerRender,
-  pushEventTo: unavailableDuringServerRender,
-  handleEvent: unavailableDuringServerRender,
-  removeHandleEvent: unavailableDuringServerRender,
-  upload: unavailableDuringServerRender,
-  uploadTo: unavailableDuringServerRender,
-});
 
 function getChildren(slots: SlotMap): ReactNode[] {
   const defaultSlot = slots.default;
@@ -112,6 +98,14 @@ function normalizeRenderRequest(input: unknown): NormalizedServerRenderRequest {
   if (typeof input.component !== "string" || input.component.length === 0) {
     throw new TypeError("server render component must be a non-empty string");
   }
+  if (
+    typeof input.identifierPrefix !== "string" ||
+    input.identifierPrefix.length === 0
+  ) {
+    throw new TypeError(
+      "server render identifierPrefix must be a non-empty string",
+    );
+  }
 
   const props = Object.hasOwn(input, "props") ? input.props : {};
   if (!isRecord(props)) {
@@ -132,6 +126,7 @@ function normalizeRenderRequest(input: unknown): NormalizedServerRenderRequest {
 
   return Object.freeze({
     component: input.component,
+    identifierPrefix: input.identifierPrefix,
     props: Object.freeze({ ...props }),
     slots: Object.freeze({ ...slots }) as SlotMap,
   });
@@ -146,7 +141,8 @@ export function createLiveViewReactServer(
 
   return Object.freeze({
     async render(request: ServerRenderRequest): Promise<string> {
-      const { component, props, slots } = normalizeRenderRequest(request);
+      const { component, identifierPrefix, props, slots } =
+        normalizeRenderRequest(request);
       const entry = getRegistryEntry(registry, component);
       const Component = await loadComponent(component, entry);
       const connectionStore = createConnectionStore();
@@ -158,13 +154,13 @@ export function createLiveViewReactServer(
           children: getChildren(slots),
           componentName: component,
           connectionStore,
-          context: serverContext,
+          context: SERVER_BRIDGE_CONTEXT,
           element: null,
           strictMode,
           ...(wrapRoot ? { wrapRoot } : {}),
         });
 
-        return renderToString(tree);
+        return renderToString(tree, { identifierPrefix });
       } finally {
         connectionStore.destroy();
       }

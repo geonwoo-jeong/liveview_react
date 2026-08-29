@@ -10,6 +10,7 @@ import {
   readTransportKind,
 } from "../transport/protocol";
 import type { ComponentProps, SlotMap } from "../types";
+import { createIdentifierPrefix } from "./identifier-prefix";
 
 export interface HydrationSnapshot {
   readonly children: readonly ReactNode[];
@@ -18,6 +19,7 @@ export interface HydrationSnapshot {
 
 const HYDRATION_FIELDS: readonly string[] = Object.freeze([
   "component",
+  "identifierPrefix",
   "props",
   "slots",
   "version",
@@ -179,6 +181,7 @@ export function readChildren(element: HTMLElement): readonly ReactNode[] {
 export function readHydrationSnapshot(
   target: HTMLElement,
   expectedComponentName: string,
+  expectedRootId: string,
 ): HydrationSnapshot | null {
   const rawDescriptor = target.getAttribute("data-react-hydration");
   if (rawDescriptor === null) return null;
@@ -211,6 +214,14 @@ export function readHydrationSnapshot(
   ) {
     throw new Error(
       `Hydration component must match data-component "${expectedComponentName}"`,
+    );
+  }
+  if (
+    typeof value.identifierPrefix !== "string" ||
+    value.identifierPrefix !== createIdentifierPrefix(expectedRootId)
+  ) {
+    throw new Error(
+      `Hydration identifierPrefix must match the root id "${expectedRootId}"`,
     );
   }
   if (!isProps(value.props)) {

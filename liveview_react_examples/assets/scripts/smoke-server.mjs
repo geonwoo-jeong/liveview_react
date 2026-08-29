@@ -4,8 +4,14 @@ const bundleUrl = new URL(
 );
 
 const { render } = await import(bundleUrl.href);
-const html = await render({ component: "Simple" });
-const lazyHtml = await render({ component: "Lazy" });
+const html = await render({
+  component: "Simple",
+  identifierPrefix: "liveview-react-smoke-simple-",
+});
+const lazyHtml = await render({
+  component: "Lazy",
+  identifierPrefix: "liveview-react-smoke-lazy-",
+});
 
 if (!html.includes("Hello world!")) {
   throw new Error("SSR smoke render did not return the Simple component");

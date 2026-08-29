@@ -196,6 +196,7 @@ try {
       runtime.hooks.LiveViewReactHook.mounted;
       createLiveViewReactServer({ components }).render({
         component: "Counter",
+        identifierPrefix: "liveview-react-package-smoke-",
         props: { count: 1 },
       });
       liveViewReactPlugin();

@@ -88,6 +88,7 @@ class HookRuntime {
     const hydrationSnapshot = readHydrationSnapshot(
       target,
       this.#componentName,
+      this.#elementId,
     );
     if (hydrationSnapshot) {
       target.removeAttribute("data-react-hydration");

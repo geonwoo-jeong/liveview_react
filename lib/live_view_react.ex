@@ -171,7 +171,7 @@ defmodule LiveViewReact do
         put_ssr_result(assigns, nil, nil)
 
       ssr_render ->
-        descriptor = Map.put(request, :version, 1)
+        descriptor = Map.put(request, :version, @transport_version)
         put_ssr_result(assigns, ssr_render, descriptor)
     end
   end
@@ -327,10 +327,13 @@ defmodule LiveViewReact do
   defp ssr_request(assigns) do
     %{
       component: assigns.component,
+      identifierPrefix: identifier_prefix(assigns.id),
       props: assigns.props,
       slots: assigns.slots
     }
   end
+
+  defp identifier_prefix(root_id), do: "liveview-react-#{root_id}-"
 
   defp render_ssr(request) do
     SSR.render(request)
