@@ -25,11 +25,13 @@ export interface ComponentTreeOptions {
 
 interface HydrationCommitProps {
   readonly children?: ReactNode;
-  readonly onCommit: () => void;
+  readonly onCommit?: () => void;
 }
 
 function HydrationCommit({ children, onCommit }: HydrationCommitProps) {
-  useEffect(onCommit, [onCommit]);
+  useEffect(() => {
+    onCommit?.();
+  }, [onCommit]);
   return children;
 }
 
@@ -64,11 +66,11 @@ export function createComponentTree({
       wrappedComponent,
     ),
   );
-  const hydratingTree = onHydrated
-    ? createElement(HydrationCommit, { onCommit: onHydrated }, builtInProviders)
-    : builtInProviders;
+  const stableTree = createElement(
+    HydrationCommit,
+    onHydrated ? { onCommit: onHydrated } : {},
+    builtInProviders,
+  );
 
-  return strictMode
-    ? createElement(StrictMode, null, hydratingTree)
-    : hydratingTree;
+  return strictMode ? createElement(StrictMode, null, stableTree) : stableTree;
 }

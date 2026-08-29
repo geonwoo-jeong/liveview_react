@@ -2,7 +2,9 @@
 
 LiveViewReact uses the same tagged component registry on the browser and the
 server. The BEAM adapter sends one render request object containing
-`component`, `props`, and `slots`.
+`component`, `identifierPrefix`, `props`, and `slots`. The prefix is derived
+from the required React root ID and is reused by `renderToString`,
+`hydrateRoot`, and `createRoot`, so React 19 `useId()` values remain stable.
 
 Create a server entry point:
 
@@ -55,5 +57,17 @@ config :liveview_react,
 ```
 
 SSR failures are explicit renderer errors. If no renderer is configured, the
-component falls back to client rendering. Hydration and `useId` requirements
-are covered in the component and architecture guides.
+component falls back to client rendering. A configured renderer never silently
+falls back: missing components and renderer failures are raised with their
+original context.
+
+The renderer contract returns one HTML string. React 19 resource hints emitted
+with `preload` or `preloadModule` remain inside that string; LiveViewReact does
+not split, move, or reinterpret them. The dead-render HTML and its immutable
+hydration descriptor stay inside the React-owned target until the connected
+join hydrates the exact same component, provider, props, slots, and identifier
+prefix. Connected props are applied only after the hydration commit.
+
+The current renderer uses `renderToString`. A component that suspends during
+SSR therefore renders its nearest Suspense fallback; streaming SSR is not
+claimed or emulated.

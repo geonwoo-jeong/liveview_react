@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockLiveViewHook } from "./tests/helpers";
+import { createIdentifierPrefix } from "./runtime/identifier-prefix";
 
 const renderMock = vi.fn();
 const rootMock = { render: renderMock, unmount: vi.fn() };
@@ -100,11 +101,18 @@ function encodeProps(props: Readonly<Record<string, unknown>>): string {
 }
 
 function hydrationDescriptor(
+  rootId: string,
   props: Readonly<Record<string, unknown>> = {},
   slots: Readonly<Record<string, string>> = {},
   component = "TestComponent",
 ): string {
-  return JSON.stringify({ component, props, slots, version: 1 });
+  return JSON.stringify({
+    component,
+    identifierPrefix: createIdentifierPrefix(rootId),
+    props,
+    slots,
+    version: 1,
+  });
 }
 
 function invoke(callback: LifecycleCallback, hook: object): void {
@@ -182,14 +190,12 @@ describe("LiveViewReactHook", () => {
     expect(hook.el.querySelectorAll).toHaveBeenCalledWith(
       ":scope > [data-react-target]",
     );
-    expect(vi.mocked(ReactDOM.createRoot)).toHaveBeenCalledWith(
-      hook.target,
-      {},
-    );
-    expect(vi.mocked(ReactDOM.createRoot)).not.toHaveBeenCalledWith(
-      hook.el,
-      {},
-    );
+    expect(vi.mocked(ReactDOM.createRoot)).toHaveBeenCalledWith(hook.target, {
+      identifierPrefix: createIdentifierPrefix(hook.el.id),
+    });
+    expect(vi.mocked(ReactDOM.createRoot)).not.toHaveBeenCalledWith(hook.el, {
+      identifierPrefix: createIdentifierPrefix(hook.el.id),
+    });
   });
 
   it("rejects an element without a direct React-owned target", () => {
@@ -226,9 +232,13 @@ describe("LiveViewReactHook", () => {
 
   it("hydrates when the inner target carries the hydration marker", () => {
     const hook = createTestHook(
-      { "data-props": encodeProps({ title: "Connected" }) },
+      {
+        id: "hydration-root",
+        "data-props": encodeProps({ title: "Connected" }),
+      },
       {
         "data-react-hydration": hydrationDescriptor(
+          "hydration-root",
           {
             title: "Server rendered",
           },
@@ -263,16 +273,31 @@ describe("LiveViewReactHook", () => {
       "unknown version",
       JSON.stringify({
         component: "TestComponent",
+        identifierPrefix: createIdentifierPrefix("malformed-root"),
         props: {},
         slots: {},
         version: 2,
       }),
     ],
-    ["component mismatch", hydrationDescriptor({}, {}, "AnotherComponent")],
+    [
+      "component mismatch",
+      hydrationDescriptor("malformed-root", {}, {}, "AnotherComponent"),
+    ],
+    [
+      "missing identifier prefix",
+      JSON.stringify({
+        component: "TestComponent",
+        props: {},
+        slots: {},
+        version: 1,
+      }),
+    ],
+    ["identifier prefix mismatch", hydrationDescriptor("another-root")],
     [
       "non-object props",
       JSON.stringify({
         component: "TestComponent",
+        identifierPrefix: createIdentifierPrefix("malformed-root"),
         props: [],
         slots: {},
         version: 1,
@@ -282,13 +307,17 @@ describe("LiveViewReactHook", () => {
       "invalid slots",
       JSON.stringify({
         component: "TestComponent",
+        identifierPrefix: createIdentifierPrefix("malformed-root"),
         props: {},
         slots: { default: 1 },
         version: 1,
       }),
     ],
   ])("rejects a malformed hydration descriptor: %s", (_label, descriptor) => {
-    const hook = createTestHook({}, { "data-react-hydration": descriptor });
+    const hook = createTestHook(
+      { id: "malformed-root" },
+      { "data-react-hydration": descriptor },
+    );
 
     expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow();
   });
@@ -725,13 +754,14 @@ describe("LiveViewReactHook", () => {
     const clientHook = createTestHook({ id: "client-root" });
     const hydratedHook = createTestHook(
       { id: "hydrated-root" },
-      { "data-react-hydration": hydrationDescriptor() },
+      { "data-react-hydration": hydrationDescriptor("hydrated-root") },
     );
 
     invoke(configuredRuntime.hooks.LiveViewReactHook.mounted, clientHook);
     invoke(configuredRuntime.hooks.LiveViewReactHook.mounted, hydratedHook);
 
     const expectedOptions = {
+      identifierPrefix: createIdentifierPrefix("client-root"),
       onCaughtError,
       onRecoverableError,
       onUncaughtError,
@@ -740,14 +770,17 @@ describe("LiveViewReactHook", () => {
       clientHook.target,
       expectedOptions,
     );
-    expect(vi.mocked(ReactDOM.hydrateRoot).mock.calls[0]?.[2]).toEqual(
-      expectedOptions,
-    );
+    expect(vi.mocked(ReactDOM.hydrateRoot).mock.calls[0]?.[2]).toEqual({
+      ...expectedOptions,
+      identifierPrefix: createIdentifierPrefix("hydrated-root"),
+    });
 
     const defaultHook = createTestHook({ id: "default-root" });
     const defaultHydratedHook = createTestHook(
       { id: "default-hydrated-root" },
-      { "data-react-hydration": hydrationDescriptor() },
+      {
+        "data-react-hydration": hydrationDescriptor("default-hydrated-root"),
+      },
     );
     invoke(liveViewReactHook.mounted, defaultHook);
     invoke(liveViewReactHook.mounted, defaultHydratedHook);
@@ -757,8 +790,12 @@ describe("LiveViewReactHook", () => {
     const defaultHydrationOptions = vi
       .mocked(ReactDOM.hydrateRoot)
       .mock.calls.at(-1)?.[2];
-    expect(defaultOptions).toEqual({});
-    expect(defaultHydrationOptions).toEqual({});
+    expect(defaultOptions).toEqual({
+      identifierPrefix: createIdentifierPrefix("default-root"),
+    });
+    expect(defaultHydrationOptions).toEqual({
+      identifierPrefix: createIdentifierPrefix("default-hydrated-root"),
+    });
     expect(defaultOptions).not.toHaveProperty("onCaughtError");
     expect(defaultOptions).not.toHaveProperty("onRecoverableError");
     expect(defaultOptions).not.toHaveProperty("onUncaughtError");

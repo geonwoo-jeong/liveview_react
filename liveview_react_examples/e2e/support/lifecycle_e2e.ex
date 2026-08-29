@@ -44,6 +44,7 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
           recoveryPadding={@recovery_padding}
           serverVersion={@server_a}
           socket={@socket}
+          ssr={false}
         />
 
         <%= if @show_b do %>
@@ -53,6 +54,7 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
             label="b"
             serverVersion={@server_b}
             socket={@socket}
+            ssr={false}
           />
         <% end %>
 
@@ -62,6 +64,7 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
           label="lazy-update"
           serverVersion={@delayed_version}
           socket={@socket}
+          ssr={false}
         />
 
         <%= if @show_delayed_destroy do %>
@@ -71,6 +74,7 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
             label="lazy-destroy"
             serverVersion={@delayed_version}
             socket={@socket}
+            ssr={false}
           />
         <% end %>
 
@@ -79,6 +83,7 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
             id="e2e-strict-root"
             component="E2EStrictModeProbe"
             socket={@socket}
+            ssr={false}
           />
         <% end %>
       </div>

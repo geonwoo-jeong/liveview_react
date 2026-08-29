@@ -1,4 +1,5 @@
 import { createElement, type ReactNode } from "react";
+import { preload, preloadModule } from "react-dom";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { useLiveViewReact } from "./context";
@@ -11,6 +12,8 @@ interface GreetingProps {
   readonly name?: string;
 }
 
+const IDENTIFIER_PREFIX = "liveview-react-server-test-";
+
 function Greeting({ name = "world" }: GreetingProps) {
   return createElement("p", null, `Hello ${name}`);
 }
@@ -22,7 +25,11 @@ describe("createLiveViewReactServer", () => {
     });
 
     await expect(
-      server.render({ component: "Greeting", props: { name: "LiveView" } }),
+      server.render({
+        component: "Greeting",
+        identifierPrefix: IDENTIFIER_PREFIX,
+        props: { name: "LiveView" },
+      }),
     ).resolves.toBe("<p>Hello LiveView</p>");
   });
 
@@ -34,7 +41,11 @@ describe("createLiveViewReactServer", () => {
     });
 
     await expect(
-      server.render({ component: "Greeting", props: { name: "React" } }),
+      server.render({
+        component: "Greeting",
+        identifierPrefix: IDENTIFIER_PREFIX,
+        props: { name: "React" },
+      }),
     ).resolves.toBe("<p>Hello React</p>");
   });
 
@@ -48,6 +59,7 @@ describe("createLiveViewReactServer", () => {
     await expect(
       server.render({
         component: "Card",
+        identifierPrefix: IDENTIFIER_PREFIX,
         slots: { default: "<strong>Server slot</strong>" },
       }),
     ).resolves.toBe(
@@ -58,23 +70,46 @@ describe("createLiveViewReactServer", () => {
   it("rejects an unknown component", async () => {
     const server = createLiveViewReactServer({ components: {} });
 
-    await expect(server.render({ component: "Missing" })).rejects.toThrow(
-      'Component "Missing" is not registered',
-    );
+    await expect(
+      server.render({
+        component: "Missing",
+        identifierPrefix: IDENTIFIER_PREFIX,
+      }),
+    ).rejects.toThrow('Component "Missing" is not registered');
   });
 
   it.each([
     [null, "server render request must be a plain object"],
     [{ component: "" }, "component must be a non-empty string"],
-    [{ component: "Greeting", props: [] }, "props must be a plain object"],
     [
-      { component: "Greeting", slots: { default: 1 } },
+      {
+        component: "Greeting",
+        identifierPrefix: IDENTIFIER_PREFIX,
+        props: [],
+      },
+      "props must be a plain object",
+    ],
+    [
+      {
+        component: "Greeting",
+        identifierPrefix: IDENTIFIER_PREFIX,
+        slots: { default: 1 },
+      },
       'slot "default" must be a string',
     ],
     [
-      { component: "Greeting", unexpected: true },
+      {
+        component: "Greeting",
+        identifierPrefix: IDENTIFIER_PREFIX,
+        unexpected: true,
+      },
       'Unknown server render request field "unexpected"',
     ],
+    [
+      { component: "Greeting", identifierPrefix: "" },
+      "identifierPrefix must be a non-empty string",
+    ],
+    [{ component: "Greeting" }, "identifierPrefix must be a non-empty string"],
   ])(
     "validates server render requests at runtime",
     async (request, message) => {
@@ -133,7 +168,11 @@ describe("createLiveViewReactServer", () => {
     });
 
     await expect(
-      server.render({ component: "Greeting", props: { name: "wrapped" } }),
+      server.render({
+        component: "Greeting",
+        identifierPrefix: IDENTIFIER_PREFIX,
+        props: { name: "wrapped" },
+      }),
     ).resolves.toBe('<main data-server="true"><p>Hello wrapped</p></main>');
     expect(wrapRoot).toHaveBeenCalledTimes(1);
   });
@@ -142,11 +181,35 @@ describe("createLiveViewReactServer", () => {
     const components = { Greeting: { component: Greeting } };
     const regular = createLiveViewReactServer({ components });
     const strict = createLiveViewReactServer({ components, strictMode: true });
-    const request = { component: "Greeting", props: { name: "strict" } };
+    const request = {
+      component: "Greeting",
+      identifierPrefix: IDENTIFIER_PREFIX,
+      props: { name: "strict" },
+    };
 
     await expect(strict.render(request)).resolves.toBe(
       await regular.render(request),
     );
+  });
+
+  it("keeps React preload hints inside the returned HTML", async () => {
+    function WithPreloads() {
+      preload("/assets/app.css", { as: "style" });
+      preloadModule("/assets/app.js", { as: "script" });
+      return createElement("p", null, "ready");
+    }
+    const server = createLiveViewReactServer({
+      components: { WithPreloads: { component: WithPreloads } },
+    });
+
+    const html = await server.render({
+      component: "WithPreloads",
+      identifierPrefix: IDENTIFIER_PREFIX,
+    });
+
+    expect(html).toContain('<link rel="preload" href="/assets/app.css"');
+    expect(html).toContain('<link rel="modulepreload" href="/assets/app.js"');
+    expect(html).toContain("<p>ready</p>");
   });
 
   it("keeps client-only React root callbacks out of server options", () => {

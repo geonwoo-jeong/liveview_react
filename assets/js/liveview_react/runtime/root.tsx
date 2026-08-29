@@ -14,6 +14,8 @@ import type {
   LiveViewReactRootOptions,
 } from "../types";
 import { createConnectionStore, type ConnectionStore } from "./connection";
+import { createIdentifierPrefix } from "./identifier-prefix";
+import { SERVER_BRIDGE_CONTEXT } from "./server-context";
 
 export interface RootRenderSnapshot {
   readonly children: readonly ReactNode[];
@@ -38,15 +40,18 @@ function copySnapshot(snapshot: RootRenderSnapshot): RootRenderSnapshot {
 }
 
 function createRootOptions({
+  element,
   onCaughtError,
   onRecoverableError,
   onUncaughtError,
-}: LiveViewReactRootOptions): RootOptions {
-  const options: RootOptions = {};
-  if (onCaughtError) options.onCaughtError = onCaughtError;
-  if (onRecoverableError) options.onRecoverableError = onRecoverableError;
-  if (onUncaughtError) options.onUncaughtError = onUncaughtError;
-  return options;
+}: LiveViewReactRootOptions &
+  Pick<RootControllerOptions, "element">): RootOptions {
+  return {
+    identifierPrefix: createIdentifierPrefix(element.id),
+    ...(onCaughtError ? { onCaughtError } : {}),
+    ...(onRecoverableError ? { onRecoverableError } : {}),
+    ...(onUncaughtError ? { onUncaughtError } : {}),
+  };
 }
 
 export class RootController {
@@ -55,7 +60,6 @@ export class RootController {
   readonly #context: LiveViewReactContextValue;
   readonly #element: HTMLElement;
   readonly #hydrate: boolean;
-  readonly #hydrationContext: LiveViewReactContextValue;
   readonly #reactOptions: RootOptions;
   readonly #strictMode: boolean;
   readonly #target: HTMLElement;
@@ -73,11 +77,6 @@ export class RootController {
     this.#componentName = options.componentName;
     this.#connectionStore = createConnectionStore();
     this.#context = options.context;
-    this.#hydrationContext = Object.freeze({
-      ...options.context,
-      el: null,
-      liveSocket: null,
-    });
     this.#element = options.element;
     this.#hydrate = options.hydrate;
     this.#reactOptions = Object.freeze(createRootOptions(options));
@@ -188,7 +187,7 @@ export class RootController {
       children: snapshot.children,
       componentName: this.#componentName,
       connectionStore: this.#connectionStore,
-      context: hydrating ? this.#hydrationContext : this.#context,
+      context: hydrating ? SERVER_BRIDGE_CONTEXT : this.#context,
       element: hydrating ? null : this.#element,
       ...(onHydrated ? { onHydrated } : {}),
       props: snapshot.props,

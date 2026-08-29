@@ -3,7 +3,8 @@ defmodule LiveViewReact.SSR.NodeJS do
   Implements SSR by using `NodeJS` package.
 
   It invokes the `render` export from the configured ESM server bundle with one
-  request object containing `component`, `props`, and `slots`.
+  request object containing `component`, `identifierPrefix`, `props`, and
+  `slots`.
   """
 
   @behaviour LiveViewReact.SSR
@@ -26,14 +27,19 @@ defmodule LiveViewReact.SSR.NodeJS do
           binary: true,
           esm: true
         )
+      rescue
+        error ->
+          reraise %LiveViewReact.SSR.RenderError{
+                    message: "Node.js SSR failed: #{renderer_error_message(error)}"
+                  },
+                  __STACKTRACE__
       catch
         :exit, {:noproc, _} ->
-          message = """
-          NodeJS is not configured. Please add the following to your application.ex:
-          {NodeJS.Supervisor, [path: LiveViewReact.SSR.NodeJS.server_path(), pool_size: 4]},
-          """
+          raise %LiveViewReact.SSR.NotConfigured{message: missing_supervisor_message()}
 
-          raise %LiveViewReact.SSR.NotConfigured{message: message}
+        :exit, _reason ->
+          raise LiveViewReact.SSR.RenderError,
+            message: "Node.js SSR process exited unexpectedly"
       end
     else
       message = """
@@ -49,5 +55,15 @@ defmodule LiveViewReact.SSR.NodeJS do
   def server_path do
     {:ok, path} = :application.get_application()
     Application.app_dir(path, "/priv")
+  end
+
+  defp renderer_error_message(%{message: message}) when is_binary(message), do: message
+  defp renderer_error_message(_error), do: "the renderer raised an unexpected exception"
+
+  defp missing_supervisor_message do
+    """
+    NodeJS is not configured. Please add the following to your application.ex:
+    {NodeJS.Supervisor, [path: LiveViewReact.SSR.NodeJS.server_path(), pool_size: 4]},
+    """
   end
 end

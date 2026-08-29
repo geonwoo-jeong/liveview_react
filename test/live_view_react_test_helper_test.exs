@@ -34,7 +34,7 @@ defmodule LiveViewReact.TestHelperTest do
       data-props-kind="snapshot" data-props-diff="" data-streams-kind="snapshot"
       data-streams-diff="" data-slots="{}">
       <div data-react-target
-        data-react-hydration='{"version":2,"component":"Test","props":{},"slots":{}}'>
+        data-react-hydration='{"version":2,"component":"Test","identifierPrefix":"liveview-react-invalid-","props":{},"slots":{}}'>
       </div>
     </div>
     """
@@ -50,7 +50,7 @@ defmodule LiveViewReact.TestHelperTest do
       data-liveview-react-version="1" data-props="{}" data-props-kind="snapshot" data-props-diff=""
       data-streams-kind="snapshot" data-streams-diff="" data-slots="{}">
       <div data-react-target
-        data-react-hydration='{"version":1,"component":"Stale","props":{},"slots":{}}'>
+        data-react-hydration='{"version":1,"component":"Stale","identifierPrefix":"liveview-react-mismatch-","props":{},"slots":{}}'>
       </div>
     </div>
     """

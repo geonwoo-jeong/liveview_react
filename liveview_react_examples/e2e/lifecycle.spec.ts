@@ -12,6 +12,12 @@ interface LazyAudit {
 }
 
 interface LifecycleAudit {
+  readonly hydrationMounts: readonly {
+    readonly rootId: string;
+    readonly descriptorPresent: boolean;
+    readonly childElementCount: number;
+    readonly inputId: string | null;
+  }[];
   readonly probes: Readonly<Record<string, ProbeAudit | undefined>>;
   readonly lazy: Readonly<Record<"update" | "destroy", LazyAudit>>;
   readonly strict: {

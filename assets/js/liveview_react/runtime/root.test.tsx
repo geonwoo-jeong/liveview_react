@@ -1,12 +1,14 @@
-import { act, memo, useEffect, useState, type ReactNode } from "react";
+import { act, memo, useEffect, useId, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLiveViewReact } from "../context";
+import { createLiveViewReactServer } from "../server";
 import type {
   LiveViewReactContextValue,
   LiveViewReactRootOptions,
 } from "../types";
 import { applyPatch } from "../transport/jsonPatch";
+import { createIdentifierPrefix } from "./identifier-prefix";
 import { RootController, type RootRenderSnapshot } from "./root";
 
 function createContext(element: HTMLElement): LiveViewReactContextValue {
@@ -212,12 +214,51 @@ describe("RootController", () => {
     await act(async () => controller.destroy());
   });
 
-  it("uses server-visible context during hydration before publishing the live bridge", async () => {
-    function ContextProbe() {
-      const { el } = useLiveViewReact();
-      return <p>{el?.id ?? "server"}</p>;
+  it("hydrates server useId markup without warnings or replacing its DOM node", async () => {
+    function IdentifierProbe() {
+      const id = useId();
+      return (
+        <label htmlFor={id}>
+          Label
+          <input id={id} defaultValue="server" />
+        </label>
+      );
     }
 
+    const recoverableError = vi.fn();
+    const target = document.createElement("div");
+    const server = createLiveViewReactServer({
+      components: { IdentifierProbe: { component: IdentifierProbe } },
+    });
+    target.innerHTML = await server.render({
+      component: "IdentifierProbe",
+      identifierPrefix: createIdentifierPrefix("react-root"),
+    });
+    const serverInput = target.querySelector("input");
+    const controller = createController(target, snapshot({}), {
+      hydrate: true,
+      hydrationSnapshot: snapshot({}),
+      onRecoverableError: recoverableError,
+    });
+
+    await act(async () => controller.mount(IdentifierProbe));
+
+    const hydratedInput = target.querySelector("input");
+    expect(recoverableError).not.toHaveBeenCalled();
+    expect(hydratedInput).toBe(serverInput);
+    expect(hydratedInput?.id).toContain("liveview-react-react-root-");
+    expect(target.querySelector("label")?.htmlFor).toBe(hydratedInput?.id);
+    await act(async () => controller.destroy());
+  });
+
+  it("uses server-visible context during hydration before publishing the live bridge", async () => {
+    function ContextProbe() {
+      const context = useLiveViewReact();
+      contexts.push(context);
+      return <p>{context.el?.id ?? "server"}</p>;
+    }
+
+    const contexts: LiveViewReactContextValue[] = [];
     const recoverableError = vi.fn();
     const wrapRoot = vi.fn(({ children }) => children);
     const target = document.createElement("div");
@@ -234,6 +275,29 @@ describe("RootController", () => {
     expect(recoverableError).not.toHaveBeenCalled();
     expect(wrapRoot.mock.calls[0]?.[0].element).toBeNull();
     expect(wrapRoot.mock.calls.at(-1)?.[0].element?.id).toBe("react-root");
+    expect(contexts[0]?.el).toBeNull();
+    expect(contexts[0]?.liveSocket).toBeNull();
+    expect(Object.isFrozen(contexts[0])).toBe(true);
+    expect(() => contexts[0]?.pushEvent("event")).toThrow(
+      "unavailable during server rendering or hydration",
+    );
+    expect(() => contexts[0]?.pushEventTo("#target", "event")).toThrow(
+      "unavailable during server rendering or hydration",
+    );
+    expect(() => contexts[0]?.handleEvent("event", () => undefined)).toThrow(
+      "unavailable during server rendering or hydration",
+    );
+    expect(() => contexts[0]?.removeHandleEvent(null)).toThrow(
+      "unavailable during server rendering or hydration",
+    );
+    expect(() => contexts[0]?.upload("upload", [])).toThrow(
+      "unavailable during server rendering or hydration",
+    );
+    expect(() => contexts[0]?.uploadTo("#target", "upload", [])).toThrow(
+      "unavailable during server rendering or hydration",
+    );
+    expect(contexts.at(-1)?.el?.id).toBe("react-root");
+    expect(() => contexts.at(-1)?.pushEvent("event")).not.toThrow();
     expect(target.textContent).toBe("react-root");
     await act(async () => controller.destroy());
   });

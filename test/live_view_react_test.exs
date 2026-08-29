@@ -18,6 +18,17 @@ defmodule LiveViewReactTest do
     def render(_request), do: "<strong>server rendered</strong>"
   end
 
+  defmodule FailingSSRRenderer do
+    @moduledoc false
+    @behaviour LiveViewReact.SSR
+
+    @impl true
+    def render(_request) do
+      raise LiveViewReact.SSR.RenderError,
+        message: ~s(Unknown LiveViewReact component "Missing")
+    end
+  end
+
   doctest LiveViewReact
 
   test "uses the canonical OTP application identity" do
@@ -205,6 +216,7 @@ defmodule LiveViewReactTest do
       assert Jason.decode!(descriptor) == %{
                "version" => 1,
                "component" => "HydratedComponent",
+               "identifierPrefix" => "liveview-react-hydrated-component-",
                "props" => %{"greeting" => "hello"},
                "slots" => %{"default" => "<em>SSR child</em>"}
              }
@@ -229,6 +241,7 @@ defmodule LiveViewReactTest do
       assert react.hydration == %{
                "version" => 1,
                "component" => "HydratedStreamComponent",
+               "identifierPrefix" => "liveview-react-hydrated-stream-component-",
                "props" => %{"title" => "Users"},
                "slots" => %{}
              }
@@ -323,6 +336,16 @@ defmodule LiveViewReactTest do
       assert react.ssr == false
       assert react.hydration == nil
     end
+
+    test "does not hide failures from a configured renderer" do
+      assert_raise LiveViewReact.SSR.RenderError,
+                   ~s(Unknown LiveViewReact component "Missing"),
+                   fn ->
+                     with_ssr_renderer(FailingSSRRenderer, fn ->
+                       render_react(&simple_component/1)
+                     end)
+                   end
+    end
   end
 
   describe "slots" do
@@ -409,9 +432,11 @@ defmodule LiveViewReactTest do
     Phoenix.LiveViewTest.render_component(component, assigns)
   end
 
-  defp with_ssr_renderer(fun) do
+  defp with_ssr_renderer(fun), do: with_ssr_renderer(SSRRenderer, fun)
+
+  defp with_ssr_renderer(renderer, fun) do
     previous_renderer = Application.fetch_env(:liveview_react, :ssr_module)
-    Application.put_env(:liveview_react, :ssr_module, SSRRenderer)
+    Application.put_env(:liveview_react, :ssr_module, renderer)
 
     try do
       fun.()
