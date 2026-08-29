@@ -1,45 +1,52 @@
 ---
-name: Tests
+name: CI
 
 on:
   push:
     branches:
       - main
   pull_request:
-    branches:
-      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   MIX_ENV: test
 
 jobs:
-  code_quality_and_tests:
+  beam:
+    name: Elixir 1.20.4 / OTP 29.0.5
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - elixir: 1.20.3
-            erlang: 27.3.4.10
-    name: Elixir v${{ matrix.elixir }}, Erlang v${{ matrix.erlang }}
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: erlef/setup-beam@v1
+      - name: Reject legacy implementation names
+        run: .github/scripts/check-clean-break.sh
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
-          otp-version: ${{ matrix.erlang }}
-          elixir-version: ${{ matrix.elixir }}
+          elixir-version: 1.20.4
+          otp-version: 29.0.5
 
-      - name: Retrieve Dependencies Cache
-        uses: actions/cache@v4
-        id: mix-cache
+      - name: Restore Mix cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-${{ matrix.erlang }}-${{ matrix.elixir }}-mix-${{ hashFiles('**/mix.lock') }}
+          key: mix-${{ runner.os }}-otp-29.0.5-elixir-1.20.4-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-otp-29.0.5-elixir-1.20.4-
 
-      - name: Install Mix Dependencies
+      - name: Install dependencies
         run: mix deps.get
 
       - name: Check unused dependencies
@@ -48,14 +55,173 @@ jobs:
       - name: Compile dependencies
         run: mix deps.compile
 
-      - name: Check format
+      - name: Check formatting
         run: mix format --check-formatted
 
-      - name: Check application compile warnings
+      - name: Compile without warnings
         run: mix compile --force --warnings-as-errors
 
-      - name: Check Credo warnings
+      - name: Run Credo
         run: mix credo
 
-      - name: Run tests
+      - name: Run ExUnit
         run: mix test
+
+  javascript:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - 24.20.0
+          - 26.8.1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Run Vitest
+        run: npm test
+
+      - name: Build package
+        run: npm run build
+
+      - name: Check package contents
+        run: npm run pack:check
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  package:
+    name: Hex and npm package artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MIX_ENV: dev
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: 1.20.4
+          otp-version: 29.0.5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.20.0
+          cache: npm
+
+      - name: Install Mix dependencies
+        run: mix deps.get
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build npm package
+        run: npm run build
+
+      - name: Verify package identity and synchronized versions
+        run: .github/scripts/check-package-identity.sh
+
+      - name: Check npm package artifact
+        run: npm run pack:check
+
+      - name: Check Hex package artifact
+        run: .github/scripts/check-hex-package.sh
+
+  example:
+    name: Example / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - 24.20.0
+          - 26.8.1
+    defaults:
+      run:
+        working-directory: liveview_react_examples
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: 1.20.4
+          otp-version: 29.0.5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            liveview_react_examples/assets/package-lock.json
+
+      - name: Restore example Mix cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            liveview_react_examples/deps
+            liveview_react_examples/_build
+          key: example-mix-${{ runner.os }}-otp-29.0.5-elixir-1.20.4-${{ hashFiles('liveview_react_examples/mix.lock') }}
+          restore-keys: |
+            example-mix-${{ runner.os }}-otp-29.0.5-elixir-1.20.4-
+
+      - name: Install Mix dependencies
+        run: mix deps.get
+
+      - name: Check Mix formatting
+        run: mix format --check-formatted
+
+      - name: Compile example without warnings
+        run: mix compile --force --warnings-as-errors
+
+      - name: Run example tests
+        run: mix test
+
+      - name: Install library asset dependencies
+        working-directory: ${{ github.workspace }}
+        run: npm ci
+
+      - name: Build library package for the example
+        working-directory: ${{ github.workspace }}
+        run: npm run build
+
+      - name: Install asset dependencies
+        working-directory: liveview_react_examples/assets
+        run: npm ci
+
+      - name: Check asset types
+        working-directory: liveview_react_examples/assets
+        run: npm run typecheck
+
+      - name: Build client assets
+        working-directory: liveview_react_examples/assets
+        run: npm run build
+
+      - name: Build server assets
+        working-directory: liveview_react_examples/assets
+        run: npm run build-server
