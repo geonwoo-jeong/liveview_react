@@ -116,9 +116,19 @@ class HookRuntime {
   update(): void {
     if (this.#destroyed) return;
     this.#assertIdentity();
-    this.#props = readNextProps(this.#element, this.#props);
-    this.#streams = readNextStreams(this.#element, this.#streams);
-    this.#root.update(this.#snapshot());
+
+    try {
+      const nextProps = readNextProps(this.#element, this.#props);
+      const nextStreams = readNextStreams(this.#element, this.#streams);
+      const nextSnapshot = this.#snapshot(nextProps, nextStreams);
+
+      this.#root.update(nextSnapshot);
+      this.#props = nextProps;
+      this.#streams = nextStreams;
+    } catch (error: unknown) {
+      this.destroy();
+      throw error;
+    }
   }
 
   reconnect(): void {
@@ -170,10 +180,13 @@ class HookRuntime {
     );
   }
 
-  #snapshot(): RootRenderSnapshot {
+  #snapshot(
+    props: ComponentProps = this.#props,
+    streams: ComponentProps = this.#streams,
+  ): RootRenderSnapshot {
     return Object.freeze({
       children: readChildren(this.#element),
-      props: Object.freeze({ ...this.#props, ...this.#streams }),
+      props: Object.freeze({ ...props, ...streams }),
     });
   }
 }

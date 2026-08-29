@@ -367,6 +367,45 @@ describe("LiveViewReactHook", () => {
     expect(lastRenderedProps()).not.toHaveProperty("removed");
   });
 
+  it("terminates after a partially invalid update", () => {
+    const hook = createTestHook({
+      "data-props": encodeProps({ nested: { count: 1 }, retained: true }),
+    });
+    invoke(liveViewReactHook.mounted, hook);
+
+    setAttributes(hook, {
+      "data-props-diff": encodePatch([["replace", "/nested/count", 2]]),
+      "data-props-kind": "patch",
+      "data-streams-kind": "invalid",
+    });
+    expect(() => invoke(liveViewReactHook.updated, hook)).toThrow(
+      "data-streams-kind must be either",
+    );
+
+    expect(rootMock.unmount).toHaveBeenCalledTimes(1);
+    expect(renderMock).toHaveBeenCalledTimes(1);
+    expect(lastRenderedProps()).toMatchObject({
+      nested: { count: 1 },
+      retained: true,
+    });
+
+    setAttributes(hook, {
+      "data-props-diff": encodePatch([["replace", "/retained", false]]),
+      "data-props-kind": "patch",
+      "data-streams-diff": "",
+      "data-streams-kind": "patch",
+    });
+    invoke(liveViewReactHook.updated, hook);
+    expect(renderMock).toHaveBeenCalledTimes(1);
+    expect(lastRenderedProps()).toMatchObject({
+      nested: { count: 1 },
+      retained: true,
+    });
+
+    invoke(liveViewReactHook.destroyed, hook);
+    expect(rootMock.unmount).toHaveBeenCalledTimes(1);
+  });
+
   it("accumulates stream patches", () => {
     const hook = createTestHook({
       "data-streams-diff": encodePatch([
