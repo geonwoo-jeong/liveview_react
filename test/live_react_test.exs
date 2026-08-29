@@ -134,6 +134,16 @@ defmodule LiveReactTest do
       """
     end
 
+    def component_with_untrusted_slot(assigns) do
+      assigns = assign(assigns, :untrusted, ~S|<img src=x onerror="alert(1)">|)
+
+      ~H"""
+      <.react name="WithSlots">
+        {@untrusted}
+      </.react>
+      """
+    end
+
     test "warns about usage of named slot" do
       assert_raise RuntimeError,
                    "Unsupported slot: hello, only one default slot is supported, passed as React children.",
@@ -161,6 +171,15 @@ defmodule LiveReactTest do
         |> Enum.into(%{})
 
       assert slots == %{"default" => "Simple content"}
+    end
+
+    test "keeps dynamic slot values HTML-escaped before transport" do
+      html = render_component(&component_with_untrusted_slot/1)
+      react = Test.get_react(html)
+
+      assert react.slots == %{
+               "default" => "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"
+             }
     end
 
     test "handles empty slots" do

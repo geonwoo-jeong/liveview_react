@@ -13,10 +13,26 @@ vi.mock("react-dom/client", () => ({
 
 const TestComponent = () => null;
 
+function findComponentProps(element) {
+  if (!element || typeof element !== "object") return null;
+  if (element.type === TestComponent) return element.props;
+
+  const children = element.props?.children;
+
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      const props = findComponentProps(child);
+      if (props) return props;
+    }
+
+    return null;
+  }
+
+  return findComponentProps(children);
+}
+
 function lastRenderedProps() {
-  // The rendered tree is <LiveReactProvider {...hooks}><TestComponent {...props} /></LiveReactProvider>
-  const tree = renderMock.mock.calls.at(-1)[0];
-  return tree.props.children.props;
+  return findComponentProps(renderMock.mock.calls.at(-1)[0]);
 }
 
 // Minimal test-only encoder mirroring LiveReact.Patch.serialize/1 and
@@ -57,15 +73,77 @@ function encodeProps(props) {
   return JSON.stringify(props).replace(/"/g, "^");
 }
 
-describe("ReactHook", () => {
+describe("current hook lifecycle characterization", () => {
   let getHooks;
   let ReactHook;
+  let ReactDOM;
 
   beforeEach(async () => {
     vi.resetModules();
-    renderMock.mockClear();
+    ReactDOM = (await import("react-dom/client")).default;
     ({ getHooks } = await import("./hooks"));
     ({ ReactHook } = getHooks({ TestComponent }));
+    vi.clearAllMocks();
+  });
+
+  it("creates one root and reuses it across updates and reconnects", () => {
+    const hook = createMockLiveViewHook({
+      "data-name": "TestComponent",
+      "data-props": encodeProps({ title: "Initial" }),
+      "data-use-diff": "false",
+    });
+
+    ReactHook.mounted.call(hook);
+
+    hook.el.getAttribute.mockImplementation((name) => {
+      if (name === "data-use-diff") return "false";
+      if (name === "data-props") return encodeProps({ title: "Updated" });
+      if (name === "data-streams-diff") return null;
+      return null;
+    });
+
+    ReactHook.updated.call(hook);
+    ReactHook.reconnected.call(hook);
+
+    expect(ReactDOM.createRoot).toHaveBeenCalledTimes(1);
+    expect(ReactDOM.hydrateRoot).not.toHaveBeenCalled();
+    expect(hook._root).toBe(rootMock);
+    expect(renderMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("hydrates existing server-rendered markup instead of creating a root", () => {
+    const hook = createMockLiveViewHook({
+      "data-name": "TestComponent",
+      "data-props": encodeProps({ title: "Server rendered" }),
+      "data-ssr": "true",
+    });
+
+    ReactHook.mounted.call(hook);
+
+    expect(ReactDOM.hydrateRoot).toHaveBeenCalledTimes(1);
+    expect(ReactDOM.createRoot).not.toHaveBeenCalled();
+    expect(hook._root).toBe(rootMock);
+  });
+
+  it("preserves false, zero, null, and empty-string props", () => {
+    const hook = createMockLiveViewHook({
+      "data-name": "TestComponent",
+      "data-props": encodeProps({
+        enabled: false,
+        count: 0,
+        selection: null,
+        label: "",
+      }),
+    });
+
+    ReactHook.mounted.call(hook);
+
+    expect(lastRenderedProps()).toMatchObject({
+      enabled: false,
+      count: 0,
+      selection: null,
+      label: "",
+    });
   });
 
   it("merges base props and streams on mount", () => {
