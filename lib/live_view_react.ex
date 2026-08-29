@@ -89,14 +89,30 @@ defmodule LiveViewReact do
   defp render_flags(assigns) do
     init = Map.get(assigns, :__changed__) == nil
     dead = not LiveView.connected?(assigns.socket)
+    diff = boolean_flag!(assigns, :diff, @diff_default)
+    ssr = boolean_flag!(assigns, :ssr, @ssr_default)
 
     %{
       init: init,
       dead: dead,
-      diff: Map.get(assigns, :diff, @diff_default),
+      diff: diff,
       streams_diff: Enum.any?(assigns, fn {_k, v} -> match?(%LiveStream{}, v) end),
-      ssr: init and dead and Map.get(assigns, :ssr, @ssr_default)
+      ssr: init and dead and ssr
     }
+  end
+
+  defp boolean_flag!(assigns, key, default) do
+    case Map.fetch(assigns, key) do
+      :error ->
+        default
+
+      {:ok, value} when is_boolean(value) ->
+        value
+
+      {:ok, value} ->
+        raise ArgumentError,
+              "LiveViewReact.react/1 requires #{inspect(key)} to be a boolean, got: #{inspect(value)}"
+    end
   end
 
   # Builds the assigns consumed by the template: props, diffs, slots and SSR output.
@@ -171,7 +187,7 @@ defmodule LiveViewReact do
   # Marks the assigns we computed ourselves as changed so LiveView diffs them.
   defp mark_computed_changed(assigns, flags, slots_changed?) do
     computed_changed = %{
-      transport_version: flags.init,
+      transport_version: true,
       props_payload: true,
       props_kind: true,
       slots: slots_changed?,
@@ -200,11 +216,16 @@ defmodule LiveViewReact do
           diff_changed_prop(pointer_path(key), old_value, new_value)
 
         :error ->
-          if normalize_key(key, old_value) == :props,
-            do: [%{op: "remove", path: pointer_path(key)}],
-            else: []
+          removed_prop_diff(key, old_value)
       end
     end)
+  end
+
+  defp removed_prop_diff(key, old_value) do
+    case normalize_key(key, old_value) do
+      :props -> [%{op: "remove", path: pointer_path(key)}]
+      _type -> []
+    end
   end
 
   defp diff_changed_prop(path, old_value, new_value) when old_value in [nil, true] do

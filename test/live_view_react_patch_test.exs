@@ -117,6 +117,18 @@ defmodule LiveViewReact.PatchTest do
 
       assert serialize_deserialize(patches) == patches
     end
+
+    test "rejects non-integer and unsafe stream limits" do
+      for value <- [1.5, 9_007_199_254_740_992] do
+        assert_raise ArgumentError, ~r/invalid patch operation/, fn ->
+          Patch.serialize([%{op: "limit", path: "/users", value: value}])
+        end
+      end
+
+      assert_raise ArgumentError, ~r/safe integer/, fn ->
+        Patch.deserialize("l6:/usersn3:1.5")
+      end
+    end
   end
 
   describe "encode_object/decode_object" do

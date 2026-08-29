@@ -138,6 +138,21 @@ defmodule LiveViewReactTest do
                      fn -> LiveViewReact.react(assigns) end
       end
     end
+
+    test "rejects non-boolean render flags" do
+      for {key, value} <- [diff: "false", ssr: 1] do
+        assigns = %{
+          id: "my-component",
+          component: "MyComponent",
+          socket: %Socket{},
+          __changed__: nil
+        }
+
+        assert_raise ArgumentError,
+                     "LiveViewReact.react/1 requires #{inspect(key)} to be a boolean, got: #{inspect(value)}",
+                     fn -> LiveViewReact.react(Map.put(assigns, key, value)) end
+      end
+    end
   end
 
   describe "DOM ownership" do
@@ -151,6 +166,23 @@ defmodule LiveViewReactTest do
       assert Floki.attribute(wrapper, "data-liveview-react-version") == ["1"]
       assert Floki.attribute(wrapper, "data-props-kind") == ["snapshot"]
       assert Floki.attribute(wrapper, "data-streams-kind") == ["snapshot"]
+    end
+
+    test "emits the protocol version on connected update frames" do
+      rendered =
+        LiveViewReact.react(%{
+          id: "versioned-component",
+          component: "VersionedComponent",
+          socket: %Socket{transport_pid: self()},
+          __changed__: %{}
+        })
+
+      dynamic =
+        rendered.dynamic.(true)
+        |> Enum.reject(&is_nil/1)
+        |> IO.iodata_to_binary()
+
+      assert dynamic =~ ~s(data-liveview-react-version="1")
     end
 
     test "renders exactly one direct React-owned target" do
