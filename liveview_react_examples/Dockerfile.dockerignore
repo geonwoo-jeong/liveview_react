@@ -1,0 +1,54 @@
+# Dockerfile uses the repository root as its build context. Keep that context
+# limited to the local packages and files copied by the build.
+**
+
+!mix.exs
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.build.json
+!vite.config.ts
+
+!lib/
+!lib/**
+
+!assets/
+!assets/js/
+!assets/js/liveview_react/
+!assets/js/liveview_react/**
+
+!liveview_react_examples/
+!liveview_react_examples/mix.exs
+!liveview_react_examples/mix.lock
+!liveview_react_examples/config/
+!liveview_react_examples/config/**
+!liveview_react_examples/lib/
+!liveview_react_examples/lib/**
+!liveview_react_examples/assets/
+!liveview_react_examples/assets/**
+!liveview_react_examples/priv/
+!liveview_react_examples/priv/**
+!liveview_react_examples/rel/
+!liveview_react_examples/rel/**
+
+# Generated output is always rebuilt in the image.
+liveview_react_examples/_build/
+liveview_react_examples/deps/
+liveview_react_examples/assets/node_modules/
+liveview_react_examples/assets/tsconfig.tsbuildinfo
+liveview_react_examples/priv/liveview_react/
+liveview_react_examples/priv/static/assets/
+liveview_react_examples/priv/static/cache_manifest.json
+
+# Never upload local credentials or key material if future files are added to
+# one of the allowlisted example directories above.
+**/.env
+**/.env.*
+**/.npmrc
+**/.yarnrc
+**/.yarnrc.*
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*credentials*
