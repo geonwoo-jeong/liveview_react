@@ -15,7 +15,6 @@ import type {
 } from "../types";
 import {
   findReactTarget,
-  readChildren,
   readComponentName,
   readElementId,
   readEvents,
@@ -24,6 +23,7 @@ import {
   readHydrationSnapshot,
   readNextProps,
   readNextStreams,
+  readSlotBindings,
 } from "./attrs";
 import {
   createHookEventExecutor,
@@ -283,10 +283,16 @@ class HookRuntime {
     streams: ComponentProps = this.#streams,
     events: EventCommandMap = this.#events,
   ): RootRenderSnapshot {
+    const componentProps = Object.freeze({ ...props, ...streams });
+    const slots = readSlotBindings(this.#element, componentProps);
+
     return Object.freeze({
-      children: readChildren(this.#element),
+      children: slots.children,
       events,
-      props: Object.freeze({ ...props, ...streams }),
+      props: Object.freeze({
+        ...componentProps,
+        ...slots.props,
+      }),
     });
   }
 }

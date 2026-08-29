@@ -57,6 +57,10 @@ function lastRenderedProps(render = renderMock): Record<string, unknown> {
   return props;
 }
 
+function reactElementProps(value: unknown): Record<string, unknown> | null {
+  return isValidElement<Record<string, unknown>>(value) ? value.props : null;
+}
+
 const OP_CODES = {
   add: "a",
   remove: "d",
@@ -98,6 +102,13 @@ function encodeProps(props: Readonly<Record<string, unknown>>): string {
     .replace(/~/g, "~~")
     .replace(/\^/g, "~^")
     .replace(/"/g, "^");
+}
+
+function encodeBase64Utf8(value: string): string {
+  const binary = Array.from(new TextEncoder().encode(value), (byte) =>
+    String.fromCharCode(byte),
+  ).join("");
+  return btoa(binary);
 }
 
 function hydrationDescriptor(
@@ -461,8 +472,82 @@ describe("LiveViewReactHook", () => {
 
     const child = lastRenderedProps().children;
     expect(isValidElement(child) && child.props).toMatchObject({
+      "data-liveview-react-slot": "default",
       dangerouslySetInnerHTML: { __html: "<strong>slot content</strong>" },
     });
+  });
+
+  it("decodes base64 slot HTML as UTF-8", () => {
+    const html = "<strong>안녕하세요 👋</strong>";
+    const hook = createTestHook({
+      "data-slots": JSON.stringify({ default: encodeBase64Utf8(html) }),
+    });
+
+    invoke(liveViewReactHook.mounted, hook);
+
+    expect(reactElementProps(lastRenderedProps().children)).toMatchObject({
+      dangerouslySetInnerHTML: { __html: html },
+    });
+  });
+
+  it("rejects malformed UTF-8 slot payloads", () => {
+    const hook = createTestHook({
+      "data-slots": JSON.stringify({ default: "/w==" }),
+    });
+
+    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+      "valid base64-encoded UTF-8",
+    );
+  });
+
+  it("maps named slots to React props and clears stale slot content on update", () => {
+    const hook = createTestHook({
+      "data-slots": JSON.stringify({
+        default: btoa("<p>Body</p>"),
+        header: btoa("<strong>Header</strong>"),
+      }),
+    });
+
+    invoke(liveViewReactHook.mounted, hook);
+
+    expect(reactElementProps(lastRenderedProps().children)).toMatchObject({
+      "data-liveview-react-slot": "default",
+      dangerouslySetInnerHTML: { __html: "<p>Body</p>" },
+    });
+    expect(reactElementProps(lastRenderedProps().header)).toMatchObject({
+      "data-liveview-react-slot": "header",
+      dangerouslySetInnerHTML: { __html: "<strong>Header</strong>" },
+    });
+
+    setAttributes(hook, {
+      "data-props-diff": encodePatch([["add", "/header", []]]),
+      "data-props-kind": "patch",
+      "data-slots": JSON.stringify({
+        default: btoa("<p>Updated</p>"),
+      }),
+      "data-streams-diff": "",
+      "data-streams-kind": "patch",
+    });
+    invoke(liveViewReactHook.updated, hook);
+
+    expect(lastRenderedProps().header).toEqual([]);
+    expect(reactElementProps(lastRenderedProps().children)).toMatchObject({
+      "data-liveview-react-slot": "default",
+      dangerouslySetInnerHTML: { __html: "<p>Updated</p>" },
+    });
+  });
+
+  it("rejects ordinary prop collisions with named slot props during mount", () => {
+    const hook = createTestHook({
+      "data-props": encodeProps({ header: "ordinary" }),
+      "data-slots": JSON.stringify({
+        header: btoa("<strong>Header</strong>"),
+      }),
+    });
+
+    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+      'cannot define both prop "header" and slot "header"',
+    );
   });
 
   it("applies props patches without replacing untouched props", () => {
@@ -684,6 +769,8 @@ describe("LiveViewReactHook", () => {
     ["missing props kind", "data-props-kind", null],
     ["malformed props kind", "data-props-kind", "delta"],
     ["initial props patch", "data-props-kind", "patch"],
+    ["missing slots", "data-slots", null],
+    ["malformed slots", "data-slots", "{"],
     ["missing streams kind", "data-streams-kind", null],
     ["malformed streams kind", "data-streams-kind", "delta"],
     ["initial streams patch", "data-streams-kind", "patch"],

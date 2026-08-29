@@ -85,6 +85,101 @@ describe("applyPatch", () => {
     expect(original.rows).toEqual([first]);
   });
 
+  it("appends array inserts and upserts whose numeric index is beyond the end", () => {
+    const original = { rows: [{ __dom_id: "a", value: 1 }] };
+
+    const result = applyPatch(original, [
+      {
+        op: "add",
+        path: "/rows/99",
+        value: { __dom_id: "b", value: 2 },
+      },
+      {
+        op: "upsert",
+        path: "/rows/999",
+        value: { __dom_id: "c", value: 3 },
+      },
+    ]);
+
+    expect(result.rows.map((row) => row.__dom_id)).toEqual(["a", "b", "c"]);
+    expect(original.rows.map((row) => row.__dom_id)).toEqual(["a"]);
+  });
+
+  it("preserves Phoenix ordering for consecutive inserts at index zero", () => {
+    const original: { rows: Array<{ __dom_id: string }> } = { rows: [] };
+    const result = applyPatch(original, [
+      { op: "upsert", path: "/rows/0", value: { __dom_id: "a" } },
+      { op: "upsert", path: "/rows/0", value: { __dom_id: "b" } },
+      { op: "upsert", path: "/rows/0", value: { __dom_id: "c" } },
+    ]);
+
+    expect(result.rows.map((row) => row.__dom_id)).toEqual(["c", "b", "a"]);
+  });
+
+  it("updates an existing DOM id in place regardless of the requested path", () => {
+    const first = { __dom_id: "a", value: 1 };
+    const second = { __dom_id: "b", value: 2 };
+    const third = { __dom_id: "c", value: 3 };
+    const original = { rows: [first, second, third] };
+
+    const result = applyPatch(original, [
+      {
+        op: "upsert",
+        path: "/rows/999",
+        value: { __dom_id: "b", value: 20 },
+      },
+    ]);
+
+    expect(result.rows.map((row) => row.__dom_id)).toEqual(["a", "b", "c"]);
+    expect(result.rows[1]).toEqual({ __dom_id: "b", value: 20 });
+    expect(result.rows[0]).toBe(first);
+    expect(result.rows[2]).toBe(third);
+    expect(original.rows[1]).toBe(second);
+  });
+
+  it("applies positive and negative stream limits", () => {
+    const rows = [
+      { __dom_id: "a" },
+      { __dom_id: "b" },
+      { __dom_id: "c" },
+      { __dom_id: "d" },
+    ];
+
+    const positive = applyPatch({ rows }, [
+      { op: "limit", path: "/rows", value: 2 },
+    ]);
+    const negative = applyPatch({ rows }, [
+      { op: "limit", path: "/rows", value: -2 },
+    ]);
+
+    expect(positive.rows.map((row) => row.__dom_id)).toEqual(["a", "b"]);
+    expect(negative.rows.map((row) => row.__dom_id)).toEqual(["c", "d"]);
+    expect(rows.map((row) => row.__dom_id)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("preserves untouched sibling stream and item references", () => {
+    const changed = { __dom_id: "u1", name: "before" };
+    const untouched = { __dom_id: "u2", name: "stable" };
+    const notification = { __dom_id: "n1", message: "stable" };
+    const notifications = [notification];
+    const original = { users: [changed, untouched], notifications };
+
+    const result = applyPatch(original, [
+      {
+        op: "upsert",
+        path: "/users/0",
+        value: { __dom_id: "u1", name: "after" },
+      },
+    ]);
+
+    expect(result.users).not.toBe(original.users);
+    expect(result.users[0]).not.toBe(changed);
+    expect(result.users[1]).toBe(untouched);
+    expect(result.notifications).toBe(notifications);
+    expect(result.notifications[0]).toBe(notification);
+    expect(original.users[0]).toBe(changed);
+  });
+
   it.each([1.5, Number.MAX_SAFE_INTEGER + 1])(
     "rejects an invalid stream limit: %s",
     (value) => {
@@ -147,7 +242,8 @@ describe("applyPatch", () => {
     ["invalid pointer escape", "/items/~2", "replace"],
     ["non-canonical array index", "/items/01", "replace"],
     ["out-of-range replace", "/items/2", "replace"],
-    ["out-of-range insert", "/items/3", "add"],
+    ["out-of-range remove", "/items/2", "remove"],
+    ["out-of-range traversal", "/items/2/value", "replace"],
     ["append replace", "/items/-", "replace"],
   ] as const)("rejects %s", (_label, path, op) => {
     expect(() =>

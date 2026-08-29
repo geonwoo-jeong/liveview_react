@@ -15,6 +15,7 @@ export const createMockLiveViewHook = (
     "data-events": "{}",
     "data-props": "{}",
     "data-props-kind": "snapshot",
+    "data-slots": "{}",
     "data-streams-kind": "snapshot",
     ...elementAttributes,
     id,

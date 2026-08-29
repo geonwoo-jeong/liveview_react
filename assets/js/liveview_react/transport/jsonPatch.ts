@@ -125,8 +125,9 @@ function resolveArrayIndex(
     );
   }
 
-  const upperBound = mode === "insert" ? array.length : array.length - 1;
-  if (index > upperBound) {
+  if (mode === "insert") return Math.min(index, array.length);
+
+  if (index >= array.length) {
     throw new Error(`JSON Patch array index is out of bounds: ${segment}`);
   }
 

@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 
 import { getRegistryEntry, loadComponent, normalizeRegistry } from "./registry";
@@ -13,6 +13,7 @@ import {
 } from "./runtime/event-callbacks";
 import { normalizeRootOptions } from "./runtime/options";
 import { SERVER_BRIDGE_CONTEXT } from "./runtime/server-context";
+import { createSlotBindings } from "./runtime/slots";
 import type {
   ComponentProps,
   ComponentRegistry,
@@ -54,17 +55,6 @@ const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
   "props",
   "slots",
 ]);
-
-function getChildren(slots: SlotMap): ReactNode[] {
-  const defaultSlot = slots.default;
-  if (!defaultSlot) return [];
-
-  return [
-    createElement("div", {
-      dangerouslySetInnerHTML: { __html: defaultSlot.trim() },
-    }),
-  ];
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -134,10 +124,7 @@ function normalizeRenderRequest(input: unknown): NormalizedServerRenderRequest {
     }
   }
 
-  const events = normalizeEventCommandMap(
-    input.events,
-    "server render events",
-  );
+  const events = normalizeEventCommandMap(input.events, "server render events");
   assertNoEventPropCollisions(props, events, "server render request");
 
   return Object.freeze({
@@ -160,6 +147,11 @@ export function createLiveViewReactServer(
     async render(request: ServerRenderRequest): Promise<string> {
       const { component, events, identifierPrefix, props, slots } =
         normalizeRenderRequest(request);
+      const slotBindings = createSlotBindings(
+        slots,
+        props,
+        "server render request",
+      );
       const entry = getRegistryEntry(registry, component);
       const Component = await loadComponent(component, entry);
       const connectionStore = createConnectionStore();
@@ -168,11 +160,14 @@ export function createLiveViewReactServer(
         const tree = createComponentTree({
           Component,
           props: mergeEventCallbackProps(
-            props,
+            Object.freeze({
+              ...props,
+              ...slotBindings.props,
+            }),
             createUnavailableEventCallbacks(events),
             "server render request",
           ),
-          children: getChildren(slots),
+          children: slotBindings.children,
           componentName: component,
           connectionStore,
           context: SERVER_BRIDGE_CONTEXT,
