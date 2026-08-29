@@ -19,14 +19,26 @@ erl_crash.dump
 # Also ignore archive artifacts (built via "mix archive.build").
 *.ez
 
-# Ignore package tarball (built via "mix hex.build").
-live_react-*.tar
+# Ignore package archives built by Hex and npm.
+liveview_react-*.tar
+liveview_react-*.tgz
 
 # Temporary files, for example, from tests.
 /tmp/
 
 # Ignore node_modules
 /node_modules/
+/dist/
+/coverage/
+/playwright-report/
+/test-results/
+
+# Ignore example build and dependency output.
+/liveview_react_examples/_build/
+/liveview_react_examples/deps/
+/liveview_react_examples/assets/node_modules/
+/liveview_react_examples/assets/playwright-report/
+/liveview_react_examples/assets/test-results/
 
 # LSP elixir
 .elixir_ls/
