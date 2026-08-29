@@ -37,6 +37,7 @@ defmodule LiveViewReactExamplesWeb.Router do
       live "/e2e/lifecycle/destination", LiveLifecycleDestination
       live "/e2e/ssr", LiveSSRE2E
       live "/e2e/streams-slots", LiveStreamsSlotsE2E
+      live "/e2e/forms-uploads", LiveFormsUploadsE2E
     end
   end
 end

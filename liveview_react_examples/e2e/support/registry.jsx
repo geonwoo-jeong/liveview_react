@@ -1,5 +1,6 @@
 import { auditLiveViewReactHook, createDelayedLoader } from "./e2e-harness";
 import { E2EEventsProbe } from "./e2e-events";
+import { E2EFormsUploadsProbe } from "./e2e-forms-uploads";
 import { E2ELifecycleProbe, E2EStrictModeProbe } from "./e2e-lifecycle";
 import { E2ESSRProbe } from "./e2e-ssr";
 import { E2EStreamsSlotsProbe } from "./e2e-streams-slots";
@@ -16,6 +17,7 @@ export function e2eConnectParams() {
 
 export default {
   E2EEventsProbe: { component: E2EEventsProbe },
+  E2EFormsUploadsProbe: { component: E2EFormsUploadsProbe },
   E2ELifecycleProbe: { component: E2ELifecycleProbe },
   E2EStrictModeProbe: { component: E2EStrictModeProbe },
   E2ESSRProbe: { component: E2ESSRProbe },
