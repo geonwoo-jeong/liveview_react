@@ -16,7 +16,7 @@ defmodule LiveViewReact.SSR.NodeJS do
       Application.get_env(
         :liveview_react,
         :ssr_filepath,
-        "./priv/liveview_react/server.mjs"
+        "./liveview_react/server.mjs"
       )
 
     if Code.ensure_loaded?(NodeJS) do
