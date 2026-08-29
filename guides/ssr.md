@@ -1,39 +1,59 @@
-# Server Side Rendering (SSR)
+# Server-side rendering
 
-_Disclaimer_ SSR for React is not a simple topic and there is a lot of issue than can arise depending on what React components you are using. It also consume more ressource since a nodejs worker is needed for the rendering. This is a simple implementation that works for the components and library I have tested.
+LiveViewReact uses the same tagged component registry on the browser and the
+server. The BEAM adapter sends one render request object containing
+`component`, `props`, and `slots`.
 
-## Project setup
+Create a server entry point:
 
-⚠️ **Warning:** Server-side rendering (SSR) requires a Node.js worker. With a `pool_size` of 1 and the Phoenix app, you need at least **512MiB** of memory. Otherwise, the instance may experience **out-of-memory (OOM)** errors or severe slowness.
+```tsx
+import components from "../components";
+import { createLiveViewReactServer } from "liveview_react/server";
 
-SSR requires Node.js to render the javascript on server side. Add `nodejs` to your mix file.
-
-```elixir
-defp deps do
-  [
-    {:nodejs, "~> 3.1"},
-    ...
-  ]
-end
+export const { render } = createLiveViewReactServer({ components });
 ```
 
-Add NodeJs.Supervisor to your `application.ex`
+## Vite development SSR
 
-```elixir
-def start(_type, _args) do
-  children = [
-    ...
-    {NodeJS.Supervisor, [path: LiveReact.SSR.NodeJS.server_path(), pool_size: 4]},
-  ]
-end
+Add the canonical Vite subpath to the plugin list:
+
+```ts
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import liveViewReact from "liveview_react/vite";
+
+export default defineConfig({
+  plugins: [react(), liveViewReact()],
+});
 ```
 
-Add a config entry to your `config/prod.exs`
+Configure the BEAM adapter:
 
 ```elixir
-config :live_react,
-  ssr_module: LiveReact.SSR.NodeJS,
-  ssr: true
+config :liveview_react,
+  ssr_module: LiveViewReact.SSR.ViteJS,
+  vite_host: "http://localhost:5173"
 ```
 
-For complete deployment follow the [SSR deployment guide](/guides/deployment.md#with-ssr)
+## Node.js production SSR
+
+Build the server entry as ESM to
+`priv/liveview_react/server.mjs`, add the optional `:nodejs` dependency, and
+start its supervisor:
+
+```elixir
+children = [
+  {NodeJS.Supervisor,
+   [path: LiveViewReact.SSR.NodeJS.server_path(), pool_size: 4]}
+]
+```
+
+```elixir
+config :liveview_react,
+  ssr_module: LiveViewReact.SSR.NodeJS,
+  ssr_filepath: "./priv/liveview_react/server.mjs"
+```
+
+SSR failures are explicit renderer errors. If no renderer is configured, the
+component falls back to client rendering. Hydration and `useId` requirements
+are covered in the component and architecture guides.

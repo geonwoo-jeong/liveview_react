@@ -1,64 +1,124 @@
-[![Github CI](https://github.com/mrdotb/live_react/workflows/Tests/badge.svg)](https://github.com/mrdotb/live_react/actions)
-[![Hex.pm](https://img.shields.io/hexpm/v/live_react.svg)](https://hex.pm/packages/live_react)
-[![Hexdocs.pm](https://img.shields.io/badge/docs-hexdocs.pm-purple)](https://hexdocs.pm/live_react)
-[![GitHub](https://img.shields.io/github/stars/mrdotb/live_react?style=social)](https://github.com/mrdotb/live_react)
+# LiveViewReact
 
-# LiveReact
+LiveViewReact embeds independent React 19 roots inside Phoenix LiveView while
+keeping LiveView in charge of server state, navigation, connection state, and
+event delivery.
 
-React inside Phoenix LiveView.
+Each `<.react>` call owns one React root. Phoenix owns the outer hook element
+and its transport metadata; React owns only its mount target. The package does
+not create a hidden shared root, a second socket, a global event bus, or
+cross-root Context.
 
-![logo](https://github.com/mrdotb/live_react/blob/main/logo.svg?raw=true)
+## When to use it
 
-## Features
-
-- ⚡ **End-To-End Reactivity** with LiveView
-- 🔋 **Server-Side Rendered** (SSR) React
-- 🦄 **Tailwind** Support
-- 💀 **Dead View** Support
-- 🐌 **Lazy-loading** React Components
-- 🦥 **Slot** Interoperability
-- 🔗 **Link Component** for LiveView Navigation
-- 🚀 **Amazing DX** with Vite
-
-## Resources
-
-- [Demo](https://live-react-examples.fly.dev/simple)
-- [HexDocs](https://hexdocs.pm/live_react)
-- [HexPackage](https://hex.pm/packages/live_react)
-- [Phoenix LiveView](https://github.com/phoenixframework/phoenix_live_view)
-- [Installation](/guides/installation.md)
-- [Deployment](/guides/deployment.md)
-- [Development](/guides/development.md)
-- [SSR](/guides/ssr.md)
-
-## Example
-
-Visit the [demo website](https://live-react-examples.fly.dev/simple) to see examples of what you can do with LiveReact.
-
-You can also check out the [PhoenixAnalytics project](https://github.com/lalabuy948/PhoenixAnalytics) for a real-world example.
-
-## Why LiveReact
-
-Phoenix LiveView enables rich, real-time user experiences with server-rendered HTML.
-It works by communicating any state changes through a websocket and updating the DOM in realtime.
-You can get a really good user experience without ever needing to write any client side code.
-
-LiveReact builds on top of Phoenix LiveView to allow for easy client side state management while still allowing for communication over the websocket.
+Use pure LiveView when server-rendered HTML and LiveView hooks are enough. Use
+LiveViewReact when one part of a LiveView needs a normal React component tree,
+React-specific libraries, or substantial client-local interaction. Use a SPA
+or Inertia-style architecture when the browser should own routing and remote
+data fetching for the whole application.
 
 ## Installation
 
-see [Installation](/guides/installation.md)
+Add the Hex package:
 
-## Roadmap 🎯
+```elixir
+defp deps do
+  [
+    {:liveview_react, "~> 0.1.0"}
+  ]
+end
+```
 
-- [ ] `useLiveForm` - an utility to efforlessly use Ecto changesets & server-side validation, similar to HEEX
-- [ ] Add support for Phoenix streams as props
+Install the matching npm package in your Phoenix assets directory:
 
-## Credits
+```sh
+npm install liveview_react@0.1.0 react@19 react-dom@19
+```
 
-I was inspired by the following libraries:
+Register React components and merge the generated hook into the existing
+`LiveSocket` configuration:
 
-- [LiveVue](https://github.com/Valian/live_vue)
-- [LiveSvelte](https://github.com/woutdp/live_svelte)
+```tsx
+import { createLiveViewReact } from "liveview_react";
+import Counter from "./Counter";
 
-I had a need for a similar library for React and so I created LiveReact 👍
+const liveViewReact = createLiveViewReact({
+  components: {
+    Counter: { component: Counter },
+  },
+});
+
+const liveSocket = new LiveSocket("/live", Socket, {
+  hooks: {
+    ...liveViewReact.hooks,
+  },
+  params: { _csrf_token: csrfToken },
+});
+```
+
+Render the component from a LiveView with an explicit, stable ID:
+
+```heex
+<.react
+  id="account-counter"
+  component="Counter"
+  socket={@socket}
+  count={@count}
+/>
+```
+
+`id` and `component` are required non-empty strings. Other assigns become
+React props unless they are reserved rendering attributes.
+
+Inside the React tree, `useLiveViewReact()` exposes the existing LiveView hook
+bridge:
+
+```tsx
+import { useLiveViewReact } from "liveview_react";
+
+export default function Counter({ count }: { count: number }) {
+  const { pushEvent } = useLiveViewReact();
+
+  return (
+    <button type="button" onClick={() => pushEvent("increment", { by: 1 })}>
+      Count: {count}
+    </button>
+  );
+}
+```
+
+## Server-side rendering
+
+The package supports Vite development SSR and Node.js production SSR through
+the same component registry. A server entry point exports an object-shaped
+renderer:
+
+```tsx
+import components from "./components";
+import { createLiveViewReactServer } from "liveview_react/server";
+
+export const { render } = createLiveViewReactServer({ components });
+```
+
+See [installation](guides/installation.md), [SSR](guides/ssr.md), and
+[deployment](guides/deployment.md) for the full setup.
+
+## Requirements
+
+- Elixir 1.20+
+- Phoenix 1.8+
+- Phoenix LiveView 1.2+
+- React and ReactDOM 19.x
+- Node.js 24 LTS or 26 current for package development
+
+## Project lineage
+
+This is a clean-break project derived from an earlier Phoenix/React bridge; it
+does not provide legacy package names, Elixir namespaces, configuration keys,
+hook names, or JavaScript aliases. See [UPSTREAM.md](UPSTREAM.md) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance and license
+details.
+
+## License
+
+[MIT](LICENSE.md)
