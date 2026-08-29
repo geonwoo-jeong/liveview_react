@@ -116,11 +116,18 @@ Start its supervisor from the application supervision tree:
 ```elixir
 children = [
   {NodeJS.Supervisor,
-   [path: LiveViewReact.SSR.NodeJS.server_path(), pool_size: 4]}
+   [path: LiveViewReact.SSR.NodeJS.server_path(:my_app), pool_size: 4]}
 ]
 ```
 
-`server_path/0` resolves to the released application's `priv` directory.
+Pass the OTP application that owns the generated SSR bundle. `server_path/1`
+resolves that application's `priv` directory without relying on the calling
+process:
+
+```elixir
+LiveViewReact.SSR.NodeJS.server_path(:my_app)
+```
+
 NodeJS module paths are relative to that supervisor path, so configure the
 renderer as follows even though the source-tree file is physically located at
 `priv/liveview_react/server.mjs`:

@@ -34,7 +34,10 @@ defmodule LiveViewReactExamples.Application do
   defp ssr_children do
     if Application.get_env(:liveview_react, :ssr, false) &&
          Application.get_env(:liveview_react, :ssr_module) == LiveViewReact.SSR.NodeJS do
-      [{NodeJS.Supervisor, [path: LiveViewReact.SSR.NodeJS.server_path(), pool_size: 1]}]
+      [
+        {NodeJS.Supervisor,
+         [path: LiveViewReact.SSR.NodeJS.server_path(:liveview_react_examples), pool_size: 1]}
+      ]
     else
       []
     end

@@ -51,10 +51,15 @@ defmodule LiveViewReact.SSR.NodeJS do
     end
   end
 
-  @spec server_path() :: String.t()
-  def server_path do
-    {:ok, path} = :application.get_application()
-    Application.app_dir(path, "/priv")
+  @doc """
+  Returns the `priv` directory for the application that owns the SSR bundle.
+
+  The application is explicit because the calling process may not belong to an
+  OTP application during Mix tasks, tests, or supervision-tree construction.
+  """
+  @spec server_path(atom()) :: String.t()
+  def server_path(application) when is_atom(application) do
+    Application.app_dir(application, "priv")
   end
 
   defp renderer_error_message(%{message: message}) when is_binary(message), do: message
@@ -63,7 +68,7 @@ defmodule LiveViewReact.SSR.NodeJS do
   defp missing_supervisor_message do
     """
     NodeJS is not configured. Please add the following to your application.ex:
-    {NodeJS.Supervisor, [path: LiveViewReact.SSR.NodeJS.server_path(), pool_size: 4]},
+    {NodeJS.Supervisor, [path: LiveViewReact.SSR.NodeJS.server_path(:my_app), pool_size: 4]},
     """
   end
 end
