@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en" class="[scrollbar-gutter:stable]">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title suffix=" · Phoenix Framework">
+      {assigns[:page_title] || "LiveViewReactExamples"}
+    </.live_title>
+    <%= if vite_dev_server?() do %>
+      <script type="module" phx-no-curly-interpolation>
+        import RefreshRuntime from "http://localhost:4011/@react-refresh"
+        RefreshRuntime.injectIntoGlobalHook(window)
+        window.$RefreshReg$ = () => {}
+        window.$RefreshSig$ = () => (type) => type
+        window.__vite_plugin_react_preamble_installed__ = true
+      </script>
+      <script type="module" src={vite_asset("/@vite/client")}>
+      </script>
+      <script type="module" src={vite_asset("/js/app.js")}>
+      </script>
+    <% else %>
+      <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+      <script type="module" phx-track-static src={~p"/assets/app.js"}>
+      </script>
+    <% end %>
+  </head>
+  <body class="min-h-screen bg-background font-sans antialiased">
+    {@inner_content}
+  </body>
+</html>
