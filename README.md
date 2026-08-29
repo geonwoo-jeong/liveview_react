@@ -19,33 +19,29 @@ data fetching for the whole application.
 
 ## Installation
 
-Add the Hex package:
-
-```elixir
-defp deps do
-  [
-    {:liveview_react, "~> 0.1.0"}
-  ]
-end
-```
-
-Install the matching npm package in your Phoenix assets directory:
+Install the Hex package, matching npm package, PhoenixVite integration,
+TypeScript entry points, virtual component registry, and generated demo in one
+step:
 
 ```sh
-npm install liveview_react@0.1.0 react@19 react-dom@19
+mix igniter.install liveview_react
 ```
 
-Register React components and merge the generated hook into the existing
-`LiveSocket` configuration:
+Use `--bun` for the PhoenixVite Bun runner or `--no-demo` to omit the generated
+`/liveview-react` example. In an umbrella, run the command from the Phoenix
+child application, not the umbrella root.
+
+Default-exported files under `assets/react-components` are registered by their
+extensionless relative paths through
+`virtual:liveview-react/components`. The generated browser entry creates and
+merges the hook automatically. A custom entry point uses the same contract:
 
 ```tsx
+import components from "virtual:liveview-react/components";
 import { createLiveViewReact } from "liveview_react";
-import Counter from "./Counter";
 
 const liveViewReact = createLiveViewReact({
-  components: {
-    Counter: { component: Counter },
-  },
+  components,
 });
 
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -55,6 +51,10 @@ const liveSocket = new LiveSocket("/live", Socket, {
   params: { _csrf_token: csrfToken },
 });
 ```
+
+The installer is idempotent and fails closed instead of overwriting ambiguous
+custom code. See [installation](guides/installation.md) for its complete file
+contract.
 
 Render the component from a LiveView with an explicit, stable ID:
 
@@ -186,8 +186,9 @@ See [installation](guides/installation.md),
 [client hooks](guides/client_hooks.md), [events](guides/events.md),
 [forms](guides/forms.md), [uploads](guides/uploads.md),
 [streams](guides/streams.md), [slots](guides/slots.md),
-[SSR](guides/ssr.md), and [deployment](guides/deployment.md) for the full
-setup.
+[SSR](guides/ssr.md), [deployment](guides/deployment.md),
+[migration](guides/migration_from_live_react.md), and
+[uninstallation](guides/uninstallation.md) for the full setup.
 
 ## Requirements
 
