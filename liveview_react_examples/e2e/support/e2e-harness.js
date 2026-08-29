@@ -1,0 +1,142 @@
+// Browser-only audit state for the deterministic lifecycle suite.
+const emptyProbe = Object.freeze({ mounts: 0, cleanups: 0 });
+
+let audit = Object.freeze({
+  probes: Object.freeze({}),
+  lazy: Object.freeze({
+    update: Object.freeze({ requests: 0, pending: 0, resolved: 0 }),
+    destroy: Object.freeze({ requests: 0, pending: 0, resolved: 0 }),
+  }),
+  strict: Object.freeze({
+    registrations: 0,
+    removals: 0,
+    activeListeners: 0,
+    deliveries: 0,
+  }),
+});
+
+let pendingLazy = Object.freeze({
+  update: Object.freeze([]),
+  destroy: Object.freeze([]),
+});
+
+function replaceProbe(label, update) {
+  const current = audit.probes[label] ?? emptyProbe;
+  const next = Object.freeze(update(current));
+
+  audit = Object.freeze({
+    ...audit,
+    probes: Object.freeze({ ...audit.probes, [label]: next }),
+  });
+
+  return next;
+}
+
+function replaceLazy(gate, update) {
+  audit = Object.freeze({
+    ...audit,
+    lazy: Object.freeze({
+      ...audit.lazy,
+      [gate]: Object.freeze(update(audit.lazy[gate])),
+    }),
+  });
+}
+
+function replaceStrict(update) {
+  audit = Object.freeze({
+    ...audit,
+    strict: Object.freeze(update(audit.strict)),
+  });
+}
+
+function snapshot() {
+  return JSON.parse(JSON.stringify(audit));
+}
+
+async function resolveLazy(gate) {
+  const releases = pendingLazy[gate];
+  if (!releases) throw new Error(`Unknown lazy gate: ${gate}`);
+
+  pendingLazy = Object.freeze({
+    ...pendingLazy,
+    [gate]: Object.freeze([]),
+  });
+  replaceLazy(gate, (current) => ({ ...current, pending: 0 }));
+
+  await Promise.all(releases.map((release) => release()));
+  await Promise.resolve();
+
+  return releases.length;
+}
+
+if (__LIVEVIEW_REACT_E2E__ && typeof window !== "undefined") {
+  Object.defineProperty(window, "__liveViewReactE2E", {
+    configurable: true,
+    value: Object.freeze({ resolveLazy, snapshot }),
+  });
+}
+
+export function createDelayedLoader(gate, importer) {
+  return () =>
+    new Promise((resolve, reject) => {
+      const release = async () => {
+        try {
+          const loaded = await importer();
+          replaceLazy(gate, (current) => ({
+            ...current,
+            resolved: current.resolved + 1,
+          }));
+          resolve(loaded);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      const releases = Object.freeze([...pendingLazy[gate], release]);
+
+      pendingLazy = Object.freeze({ ...pendingLazy, [gate]: releases });
+      replaceLazy(gate, (current) => ({
+        ...current,
+        requests: current.requests + 1,
+        pending: releases.length,
+      }));
+    });
+}
+
+export function recordProbeMount(label) {
+  const next = replaceProbe(label, (current) => ({
+    ...current,
+    mounts: current.mounts + 1,
+  }));
+
+  return `${label}-${next.mounts}`;
+}
+
+export function recordProbeCleanup(label) {
+  replaceProbe(label, (current) => ({
+    ...current,
+    cleanups: current.cleanups + 1,
+  }));
+}
+
+export function recordStrictRegistration() {
+  replaceStrict((current) => ({
+    ...current,
+    registrations: current.registrations + 1,
+    activeListeners: current.activeListeners + 1,
+  }));
+}
+
+export function recordStrictRemoval() {
+  replaceStrict((current) => ({
+    ...current,
+    removals: current.removals + 1,
+    activeListeners: current.activeListeners - 1,
+  }));
+}
+
+export function recordStrictDelivery() {
+  replaceStrict((current) => ({
+    ...current,
+    deliveries: current.deliveries + 1,
+  }));
+}

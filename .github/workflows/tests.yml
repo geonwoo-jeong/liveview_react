@@ -225,3 +225,18 @@ jobs:
       - name: Build server assets
         working-directory: liveview_react_examples/assets
         run: npm run build-server
+
+      - name: Check browser test types
+        if: matrix.node == '24.20.0'
+        working-directory: ${{ github.workspace }}
+        run: npm run test:e2e:typecheck
+
+      - name: Install Playwright Chromium
+        if: matrix.node == '24.20.0'
+        working-directory: ${{ github.workspace }}
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser lifecycle tests
+        if: matrix.node == '24.20.0'
+        working-directory: ${{ github.workspace }}
+        run: npm run test:e2e

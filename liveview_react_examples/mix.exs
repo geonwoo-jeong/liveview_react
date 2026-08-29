@@ -25,8 +25,14 @@ defmodule LiveViewReactExamples.MixProject do
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test) do
+    ["lib", "test/support"] ++ e2e_paths(System.get_env("LIVEVIEW_REACT_E2E"))
+  end
+
   defp elixirc_paths(_), do: ["lib"]
+
+  defp e2e_paths("true"), do: ["e2e/support"]
+  defp e2e_paths(_), do: []
 
   # Specifies your project dependencies.
   #

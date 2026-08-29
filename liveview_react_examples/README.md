@@ -28,6 +28,14 @@ npm run build
 npm run build-server
 ```
 
+The browser lifecycle suite runs from the repository root. Install Chromium
+once, then run the suite against the isolated test server and Vite dev server:
+
+```shell
+npx playwright install chromium
+npm run test:e2e
+```
+
 Build the production image from the repository root so Docker can resolve both
 local `liveview_react` dependencies:
 

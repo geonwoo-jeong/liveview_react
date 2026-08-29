@@ -10,27 +10,36 @@ import components from "../react-components";
 import { createLiveViewReact } from "liveview_react";
 import "../css/app.css";
 
-const liveViewReact = createLiveViewReact({ components });
-
-let csrfToken = document
-  .querySelector("meta[name='csrf-token']")
-  .getAttribute("content");
-let liveSocket = new LiveSocket("/live", Socket, {
-  hooks: liveViewReact.hooks,
-  longPollFallbackMs: 2500,
-  params: { _csrf_token: csrfToken },
-});
-
 // Show progress bar on live navigation and form submits
 topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
 window.addEventListener("phx:page-loading-start", (_info) => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
 
-// connect if there are any LiveViews on the page
-liveSocket.connect();
+function connectLiveView(registeredComponents) {
+  const liveViewReact = createLiveViewReact({
+    components: registeredComponents,
+    strictMode: __LIVEVIEW_REACT_E2E__,
+  });
+  const csrfToken = document
+    .querySelector("meta[name='csrf-token']")
+    .getAttribute("content");
+  const liveSocket = new LiveSocket("/live", Socket, {
+    hooks: liveViewReact.hooks,
+    longPollFallbackMs: 2500,
+    params: { _csrf_token: csrfToken },
+  });
 
-// expose liveSocket on window for web console debug logs and latency simulation:
-// >> liveSocket.enableDebug()
-// >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session
-// >> liveSocket.disableLatencySim()
-window.liveSocket = liveSocket;
+  // Connect if there are any LiveViews on the page.
+  liveSocket.connect();
+
+  // Expose liveSocket for console debugging and latency simulation.
+  window.liveSocket = liveSocket;
+}
+
+if (__LIVEVIEW_REACT_E2E__) {
+  import("../../e2e/support/registry").then(({ default: e2eComponents }) => {
+    connectLiveView({ ...components, ...e2eComponents });
+  });
+} else {
+  connectLiveView(components);
+}
