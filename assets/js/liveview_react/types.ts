@@ -46,6 +46,38 @@ export type UploadTo = (
   files: UploadFiles,
 ) => void;
 
+export interface LiveUploadEntry {
+  readonly ref: string;
+  readonly cancelled: boolean;
+  readonly client_last_modified: number;
+  readonly client_name: string;
+  readonly client_relative_path: string;
+  readonly client_size: number;
+  readonly client_type: string;
+  readonly progress: number;
+  readonly done: boolean;
+  readonly valid: boolean;
+  readonly preflighted: boolean;
+  readonly errors: readonly unknown[];
+}
+
+export interface LiveUploadError {
+  readonly ref: string;
+  readonly error: unknown;
+}
+
+export interface LiveUploadConfig {
+  readonly ref: string;
+  readonly name: string;
+  readonly accept: "any" | readonly string[];
+  readonly max_entries: number;
+  readonly max_entries_mode: "selected" | "total";
+  readonly max_file_size: number;
+  readonly auto_upload: boolean;
+  readonly entries: readonly LiveUploadEntry[];
+  readonly errors: readonly LiveUploadError[];
+}
+
 export interface LiveViewReactContextValue {
   readonly el: HTMLElement | null;
   readonly liveSocket: unknown;

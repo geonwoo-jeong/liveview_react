@@ -34,13 +34,25 @@ defmodule LiveViewReact.Encoder.LiveViewTest do
 
   describe "UploadEntry / UploadConfig" do
     test "encodes an empty UploadConfig" do
-      config = UploadConfig.build(:avatar, "ref123", accept: :any, max_entries: 1)
-      encoded = Encoder.encode(config, [])
+      config =
+        UploadConfig.build(:avatar, "ref123",
+          accept: :any,
+          max_entries: 1,
+          max_entries_mode: :selected,
+          max_file_size: 42
+        )
 
-      assert encoded.ref
-      assert encoded.name == :avatar
-      assert encoded.entries == []
-      assert encoded.errors == []
+      assert Encoder.encode(config, []) == %{
+               accept: "any",
+               auto_upload: false,
+               entries: [],
+               errors: [],
+               max_entries: 1,
+               max_entries_mode: "selected",
+               max_file_size: 42,
+               name: "avatar",
+               ref: "ref123"
+             }
     end
   end
 end
