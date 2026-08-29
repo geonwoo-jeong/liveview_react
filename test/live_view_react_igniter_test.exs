@@ -6,11 +6,14 @@ defmodule LiveViewReact.IgniterTest do
 
   test "task declares the clean installer contract" do
     info = Mix.Tasks.LiveviewReact.Install.info([], nil)
+    phoenix_vite_info = Mix.Tasks.PhoenixVite.Install.info([], "liveview_react.install")
 
     assert info.schema == [demo: :boolean]
     assert info.defaults == [demo: true]
     assert info.aliases == []
     assert info.installs == [{:phoenix_vite, "~> 0.5"}]
+    assert phoenix_vite_info.schema == [bun: :boolean]
+    assert phoenix_vite_info.aliases == [b: :bun]
     assert info.example == "mix igniter.install liveview_react"
     refute Mix.Tasks.LiveviewReact.Install.supports_umbrella?()
     refute LiveViewReact.Igniter.supports_umbrella?()
