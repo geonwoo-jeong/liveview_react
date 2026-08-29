@@ -85,12 +85,12 @@ describe("applyPatch", () => {
     expect(original.rows).toEqual([first]);
   });
 
-  it("appends array inserts and upserts whose numeric index is beyond the end", () => {
+  it("appends stream upserts whose numeric index is beyond the end", () => {
     const original = { rows: [{ __dom_id: "a", value: 1 }] };
 
     const result = applyPatch(original, [
       {
-        op: "add",
+        op: "upsert",
         path: "/rows/99",
         value: { __dom_id: "b", value: 2 },
       },
@@ -242,6 +242,7 @@ describe("applyPatch", () => {
     ["invalid pointer escape", "/items/~2", "replace"],
     ["non-canonical array index", "/items/01", "replace"],
     ["out-of-range replace", "/items/2", "replace"],
+    ["out-of-range add", "/items/2", "add"],
     ["out-of-range remove", "/items/2", "remove"],
     ["out-of-range traversal", "/items/2/value", "replace"],
     ["append replace", "/items/-", "replace"],

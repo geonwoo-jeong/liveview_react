@@ -5,6 +5,7 @@ import {
   assertNoEventPropCollisions,
   normalizeEventCommandMap,
 } from "./runtime/event-callbacks";
+import { validateSlotBindings } from "./runtime/slots";
 import type { ServerRenderRequest } from "./server";
 
 const DEFAULT_MAX_BODY_BYTES = 1_048_576;
@@ -150,6 +151,17 @@ function parseRenderRequest(value: unknown): ServerRenderRequest {
         throw new RequestError(400, "slot values must be strings");
       }
     }
+  }
+
+  try {
+    validateSlotBindings(
+      (value.slots ?? {}) as Record<string, string>,
+      (value.props ?? {}) as Record<string, unknown>,
+      "render request",
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new RequestError(400, message);
   }
 
   const renderRequest: ServerRenderRequest = {

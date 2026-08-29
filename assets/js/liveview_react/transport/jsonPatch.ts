@@ -2,7 +2,7 @@ import type { PatchOperation, PatchOperationName } from "./compactPatch";
 
 type JsonRecord = Record<string, unknown>;
 type JsonContainer = JsonRecord | unknown[];
-type ArrayIndexMode = "access" | "insert";
+type ArrayIndexMode = "access" | "add" | "upsert";
 
 function isRecord(value: unknown): value is JsonRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -110,7 +110,7 @@ function resolveArrayIndex(
   }
 
   if (segment === "-") {
-    if (mode === "insert") return array.length;
+    if (mode === "add" || mode === "upsert") return array.length;
     throw new Error('JSON Patch "-" is only valid for array insert operations');
   }
 
@@ -125,7 +125,15 @@ function resolveArrayIndex(
     );
   }
 
-  if (mode === "insert") return Math.min(index, array.length);
+  if (mode === "upsert") return Math.min(index, array.length);
+
+  if (mode === "add") {
+    if (index > array.length) {
+      throw new Error(`JSON Patch array index is out of bounds: ${segment}`);
+    }
+
+    return index;
+  }
 
   if (index >= array.length) {
     throw new Error(`JSON Patch array index is out of bounds: ${segment}`);
@@ -250,7 +258,7 @@ function applyArrayOperation(
 ): void {
   switch (operation.op) {
     case "add": {
-      const index = resolveArrayIndex(segment, target, "insert");
+      const index = resolveArrayIndex(segment, target, "add");
       target.splice(index, 0, operation.value);
       return;
     }
@@ -277,7 +285,7 @@ function applyArrayOperation(
         }
       }
 
-      const index = resolveArrayIndex(segment, target, "insert");
+      const index = resolveArrayIndex(segment, target, "upsert");
       target.splice(index, 0, operation.value);
       return;
     }
