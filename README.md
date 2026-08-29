@@ -192,7 +192,7 @@ setup.
 
 - Elixir 1.20+
 - Phoenix 1.8+
-- Phoenix LiveView 1.2+
+- Phoenix LiveView ~> 1.2.11
 - React and ReactDOM 19.x
 - Node.js 24 LTS or 26 current for package development
 
