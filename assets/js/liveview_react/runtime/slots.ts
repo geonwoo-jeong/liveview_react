@@ -111,12 +111,20 @@ function assertNoSlotPropCollisions(
   }
 }
 
+export function validateSlotBindings(
+  slots: SlotMap,
+  props: ComponentProps,
+  source: string,
+): void {
+  assertNoSlotPropCollisions(props, slots, source);
+}
+
 export function createSlotBindings(
   slots: SlotMap,
   props: ComponentProps,
   source: string,
 ): SlotBindings {
-  assertNoSlotPropCollisions(props, slots, source);
+  validateSlotBindings(slots, props, source);
 
   return Object.freeze({
     children: createValidatedSlotChildren(slots),
