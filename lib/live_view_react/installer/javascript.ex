@@ -67,6 +67,23 @@ defmodule LiveViewReact.Installer.JavaScript do
     end
   end
 
+  @doc """
+  Returns whether the only Vite plugins array contains a call to one callee.
+
+  This is a fail-closed inspection helper for installer preflight checks. It
+  only reports success when the source parses cleanly and exposes exactly one
+  direct `plugins: [...]` property.
+  """
+  @spec vite_plugin_present?(binary(), binary()) :: {:ok, boolean()} | {:error, binary()}
+  def vite_plugin_present?(source, plugin_callee) do
+    with :ok <- validate_source(source),
+         {:ok, callee} <- validate_expression(plugin_callee, "Vite plugin callee"),
+         {:ok, tokens, pairs} <- scan_source(source),
+         {:ok, plugins} <- only_plugins_array(tokens, pairs) do
+      {:ok, plugins_array_includes_callee?(plugins.tokens, callee.normalized)}
+    end
+  end
+
   defp validate_source(source) when is_binary(source) do
     cond do
       not String.valid?(source) ->
@@ -404,6 +421,18 @@ defmodule LiveViewReact.Installer.JavaScript do
         {_many, []} ->
           {:error, "Vite plugins array contains the requested plugin multiple times"}
       end
+    end
+  end
+
+  defp plugins_array_includes_callee?(tokens, callee_normalized) do
+    case Scanner.split_top_level(tokens) do
+      {:ok, elements} ->
+        elements
+        |> Enum.reject(&(&1 == []))
+        |> Enum.any?(&(call_callee(&1) == callee_normalized))
+
+      {:error, _message} ->
+        false
     end
   end
 

@@ -9,10 +9,89 @@ defmodule LiveViewReact.IgniterTest do
 
     assert info.schema == [demo: :boolean]
     assert info.defaults == [demo: true]
+    assert info.aliases == []
     assert info.installs == [{:phoenix_vite, "~> 0.5"}]
     assert info.example == "mix igniter.install liveview_react"
     refute Mix.Tasks.LiveviewReact.Install.supports_umbrella?()
     refute LiveViewReact.Igniter.supports_umbrella?()
+  end
+
+  test "detects an already configured phoenix_vite project before skipping the child installer" do
+    configured_vite = """
+    import { defineConfig } from "vite"
+    import { phoenixVitePlugin } from "phoenix_vite"
+
+    export default defineConfig({
+      plugins: [phoenixVitePlugin({ pattern: /\\.(ex|heex)$/ })]
+    })
+    """
+
+    assert Mix.Tasks.LiveviewReact.Install.phoenix_vite_already_configured?(
+             [{:phoenix_vite, "~> 0.5"}],
+             configured_vite
+           )
+
+    refute Mix.Tasks.LiveviewReact.Install.phoenix_vite_already_configured?(
+             [{:phoenix_vite, "~> 0.5"}],
+             ~s(import { defineConfig } from "vite")
+           )
+
+    refute Mix.Tasks.LiveviewReact.Install.phoenix_vite_already_configured?(
+             [{:ecto, "~> 3.0"}],
+             configured_vite
+           )
+
+    refute Mix.Tasks.LiveviewReact.Install.phoenix_vite_already_configured?(
+             [{:phoenix_vite, "~> 0.5"}],
+             """
+             // import { phoenixVitePlugin } from "phoenix_vite"
+             // phoenixVitePlugin({})
+             export default { plugins: [] }
+             """
+           )
+
+    refute Mix.Tasks.LiveviewReact.Install.phoenix_vite_already_configured?(
+             [{:phoenix_vite, "~> 0.5"}],
+             """
+             import { phoenixVitePlugin } from "phoenix_vite"
+             const helper = phoenixVitePlugin({})
+             export default { plugins: [] }
+             """
+           )
+  end
+
+  test "configuration equality ignores parser location metadata" do
+    actual = Sourceror.parse_string!("\n\n\"http://localhost:5173\"")
+    expected = Sourceror.parse_string!(~s("http://localhost:5173"))
+
+    assert LiveViewReact.Igniter.config_values_equal?(actual, expected)
+
+    refute LiveViewReact.Igniter.config_values_equal?(
+             actual,
+             Sourceror.parse_string!(~s("http://localhost:5174"))
+           )
+  end
+
+  @tag :tmp_dir
+  test "configured task skips PhoenixVite composition without dropping Bun flags", %{
+    tmp_dir: tmp_dir
+  } do
+    config_path = Path.join([tmp_dir, "assets", "vite.config.mjs"])
+    File.mkdir_p!(Path.dirname(config_path))
+
+    File.write!(config_path, """
+    import { phoenixVitePlugin } from 'phoenix_vite'
+    export default { plugins: [phoenixVitePlugin({})] }
+    """)
+
+    File.cd!(tmp_dir, fn ->
+      info = Mix.Tasks.LiveviewReact.Install.info(["--bun"], nil)
+
+      assert info.schema == [demo: :boolean, bun: :boolean]
+      assert info.defaults == [demo: true, bun: false]
+      assert info.aliases == [b: :bun]
+      assert info.installs == []
+    end)
   end
 
   test "installs into a PhoenixVite project and is byte-idempotent on a second pass" do
