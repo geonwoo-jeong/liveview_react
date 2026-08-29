@@ -65,9 +65,10 @@ Production SSR also requires:
 - a supported Node.js runtime in the release image
 - `LiveViewReact.SSR.NodeJS` in the production LiveViewReact configuration
 
-When the supervisor uses `LiveViewReact.SSR.NodeJS.server_path()`, its module
-root is the released application's `priv` directory. Configure the module path
-relative to that root:
+When the supervisor uses
+`LiveViewReact.SSR.NodeJS.server_path(:my_app)`, its module root is that
+released application's `priv` directory. Configure the module path relative to
+that root:
 
 ```elixir
 config :liveview_react,

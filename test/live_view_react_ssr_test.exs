@@ -6,6 +6,11 @@ defmodule LiveViewReact.SSRTest do
 
   @config_keys [:ssr_module, :vite_host, :vite_connect_timeout, :vite_request_timeout]
 
+  test "NodeJS server path resolves the explicitly selected application priv directory" do
+    assert LiveViewReact.SSR.NodeJS.server_path(:liveview_react) ==
+             Application.app_dir(:liveview_react, "priv")
+  end
+
   defmodule Renderer do
     @moduledoc false
     @behaviour SSR
