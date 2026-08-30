@@ -32,10 +32,12 @@ assigns are component props; put outer visual markup inside the React
 component.
 
 Pass `@streams.name` directly and use each item's transported `__dom_id` as its
-React key. Default HEEx content becomes React `children`;
-named slots become same-name React props. Slot HTML is inert and cannot contain
-forms, LiveView bindings or hooks, LiveComponents, or nested React roots. See
-[Streams](streams.md) and [Slots](slots.md).
+React key. Default HEEx content becomes React `children`; named slots are
+written as `<:slot name="header">` and become same-name React props. Slot HTML
+uses a fail-closed inert-markup allowlist and cannot contain links, form
+controls, resource-bearing tags, event/style/URL attributes, LiveView bindings
+or hooks, LiveComponents, or nested React roots. See [Streams](streams.md) and
+[Slots](slots.md).
 
 An `r-on:save={%Phoenix.LiveView.JS{}}` attribute becomes an `onSave` callback
 prop. Event names must be lowercase kebab case. Callback names cannot collide
@@ -110,6 +112,11 @@ The factory returns `{ hooks: { LiveViewReactHook } }`. The main package also
 exports `Link`, `useLiveViewReact`, `useLiveEvent`, `useEventReply`,
 `useLiveConnection`, `useLiveNavigation`, `useLiveForm`, and `useLiveUpload`,
 with their public TypeScript types.
+
+Low-level `useLiveViewReact()` bridge commands are unavailable during SSR and
+the hydration render pass. Invoke commands only from effects or event handlers;
+the built-in hooks use their documented post-commit client bridge during
+hydration. See [Client hooks](client_hooks.md).
 
 ## Vite plugin
 

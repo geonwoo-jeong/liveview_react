@@ -527,6 +527,18 @@ test("reconnect replaces every stale stream with one authoritative snapshot", as
   expect(browserErrors()).toEqual([]);
 });
 
+async function expectNoSidebarProp(page: Page): Promise<void> {
+  const transport = await page
+    .locator("#e2e-streams-slots-root")
+    .evaluate((element) => ({
+      props: element.getAttribute("data-props") ?? "",
+      diff: element.getAttribute("data-props-diff") ?? "",
+    }));
+
+  expect(transport.props).not.toContain("sidebar");
+  expect(transport.diff).not.toContain("/sidebar");
+}
+
 test("hydrates slot HTML, updates it from the server, and removes both slot kinds", async ({
   page,
 }) => {
@@ -562,6 +574,19 @@ test("hydrates slot HTML, updates it from the server, and removes both slot kind
   );
   await expect(root.getByTestId("named-slot-region")).toHaveText("named:none");
   await expect(root.getByTestId("named-slot-content")).toHaveCount(0);
+
+  // A removed named slot must not reappear as an ordinary prop. Assert the
+  // transport directly: a component that treats [] like an absent slot would
+  // hide the leak from a rendered-output assertion.
+  await expectNoSidebarProp(page);
+
+  // Restoring the slot must not collide with a stale ordinary prop.
+  await page.getByTestId("restore-named-slot").click();
+  await expectOperation(page, "restore_named_slot");
+  await expect(root.getByTestId("named-slot-content")).toHaveText(
+    "Named slot revision 1",
+  );
+  await expectNoSidebarProp(page);
 
   await page.getByTestId("remove-default-slot").click();
   await expectOperation(page, "remove_default_slot");

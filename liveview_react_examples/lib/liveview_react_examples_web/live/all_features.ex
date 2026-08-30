@@ -26,9 +26,9 @@ defmodule LiveViewReactExamplesWeb.LiveAllFeatures do
           One screen covering the current bridge surface
         </h1>
         <p class="max-w-3xl text-base leading-7 text-zinc-600">
-          This page exercises the APIs that changed most from the old `live_react`
-          shape: explicit roots, SSR hydration, declarative event callbacks, programmatic
-          replies, streams, slots, forms, uploads, navigation, and connection state.
+          This page exercises the clean-break bridge surface: explicit roots, SSR hydration,
+          declarative event callbacks, programmatic replies, streams, slots, forms, uploads,
+          navigation, and connection state.
         </p>
       </section>
 

@@ -736,6 +736,7 @@ defmodule LiveViewReactTest do
         {"URL-bearing attributes",
          ~s|<blockquote cite="https://example.test">quote</blockquote>|},
         {"non-inert attribute", ~s|<div contenteditable>editable</div>|},
+        {"markup declarations", ~s|<!--><img src="/tracking.gif">-->|},
         {"malformed HTML", ~s|<div title="unterminated>|}
       ]
 

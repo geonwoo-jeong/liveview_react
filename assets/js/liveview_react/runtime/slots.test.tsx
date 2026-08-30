@@ -89,6 +89,7 @@ describe("slot bindings", () => {
       '<blockquote cite="https://example.test">Quote</blockquote>',
     ],
     ["non-inert attribute", "<div contenteditable>Editable</div>"],
+    ["markup declarations", '<!--><img src="/tracking.gif">-->'],
     ["malformed HTML", '<div title="unterminated>'],
   ])("rejects unsupported %s", (reason, html) => {
     expect(() =>

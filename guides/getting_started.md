@@ -128,3 +128,5 @@ React component tree.
 - [Architecture](architecture.md) explains ownership and lifecycle boundaries.
 - [SSR](ssr.md) covers development and production rendering.
 - [Testing](testing.md) shows how to inspect roots and run the browser suite.
+- [Limitations](limitations.md) records the deliberate slot, hydration,
+  production SSR, and supported-browser boundaries.

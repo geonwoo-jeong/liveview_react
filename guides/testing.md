@@ -73,6 +73,33 @@ forms/uploads, slots, reconnect, and package behavior. TypeScript strict checks
 and the temporary packed-package consumer verify the public types and exact
 runtime exports.
 
+The release-only fresh-consumer lane goes beyond the in-memory Igniter fixture
+and repository-linked example. It generates a new Phoenix application, installs
+the unpacked Hex artifact through the public Igniter task, injects the packed
+npm tarball at the install boundary, rejects source-repository references and
+npm symlinks, then runs the generated tests, TypeScript check, production
+browser build, SSR build, and SSR renderer. Reproduce that lane after installing
+the pinned `phx_new` and `igniter_new` archives:
+
+```sh
+.github/scripts/check-fresh-consumer.sh
+```
+
+## Server lifecycle tests
+
+`test/live_view_react_lifecycle_test.exs` mounts real LiveViews over a real
+socket through `Phoenix.LiveViewTest`, so the transport is exercised against
+genuine HEEx change tracking rather than hand-built assigns. That matters
+because the props diff is computed from LiveView's `__changed__` old values,
+and only a connected render produces them the way production does.
+
+The suite pins the invariants that value-shape guessing used to break: an empty
+list stays an ordinary prop, a named slot hidden by `:if` contributes no prop at
+any point in its lifecycle, and a prop backed by `:temporary_assigns` always
+ships a full snapshot instead of a delta against a baseline the client never
+held. `test/support` holds the endpoint, router, and fixture LiveViews, and
+`lazy_html` is required for connected renders.
+
 Property tests are discovered by normal `mix test` and `npm test`. Their fixed
 seeds and bounded runs exercise Unicode and compact delimiters, patch
 round-trips, immutable model equivalence, original-input preservation, changed
@@ -97,6 +124,13 @@ class/memo/forwardRef/useId/StrictMode behavior, third-party React components,
 controlled and rich-text inputs, canvas/WebGL, React DevTools root discovery,
 Error Boundaries, root error callbacks, and cleanup.
 
+This suite uses an instrumented Vite development server and Phoenix test
+endpoint. Release verification builds the production browser and SSR bundles
+before running it, but the current Chromium lane does not serve the built
+production browser artifact. The fresh-consumer lane independently verifies
+that a generated application's production browser bundle is emitted and its SSR
+bundle renders.
+
 React-specific checks explicitly assert provider locality per root, portal
 ownership and synthetic bubbling, `useId()` hydration stability, `memo` and
 copy-on-write prop identity, `forwardRef`, transition scheduling,
@@ -114,15 +148,15 @@ diagnostic only, not a portable pass/fail threshold.
 
 The package declarations and CI lanes define the supported initial range:
 
-| Surface | Minimum lane | Latest lane |
-| --- | --- | --- |
-| Elixir / OTP | Elixir 1.20.0 / OTP 27.3.4.10 | Elixir 1.20.4 / OTP 29.0.5 |
-| Phoenix | 1.8.0 exactly | newest release satisfying `~> 1.8` |
-| Phoenix LiveView | 1.2.11 exactly | newest release satisfying `~> 1.2.11` |
-| Node.js | 24.20.0 | 26.8.1 |
-| React / ReactDOM | 19.0.0 | 19.2.8 |
-| TypeScript | 7.0.2 | 7.0.2 |
-| Vite | 8.0.0 | 8.2.2 |
+| Surface          | Minimum lane                  | Latest lane                           |
+| ---------------- | ----------------------------- | ------------------------------------- |
+| Elixir / OTP     | Elixir 1.20.0 / OTP 27.3.4.10 | Elixir 1.20.4 / OTP 29.0.5            |
+| Phoenix          | 1.8.0 exactly                 | newest release satisfying `~> 1.8`    |
+| Phoenix LiveView | 1.2.11 exactly                | newest release satisfying `~> 1.2.11` |
+| Node.js          | 24.20.0                       | 26.8.1                                |
+| React / ReactDOM | 19.0.0                        | 19.2.8                                |
+| TypeScript       | 7.0.2                         | 7.0.2                                 |
+| Vite             | 8.0.0                         | 8.2.2                                 |
 
 The minimum BEAM lane unlocks the repository lock and resolves exact Phoenix
 and LiveView floors. The latest lane unlocks and resolves the newest versions

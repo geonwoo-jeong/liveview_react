@@ -107,6 +107,9 @@ defmodule LiveViewReactExamplesWeb.LiveStreamsSlotsE2E do
         <button data-testid="remove-default-slot" phx-click="remove_default_slot">
           remove default slot
         </button>
+        <button data-testid="restore-named-slot" phx-click="restore_named_slot">
+          restore named slot
+        </button>
         <button data-testid="remove-named-slot" phx-click="remove_named_slot">
           remove named slot
         </button>
@@ -130,9 +133,9 @@ defmodule LiveViewReactExamplesWeb.LiveStreamsSlotsE2E do
         socket={@socket}
         ssr={true}
       >
-        <:sidebar :if={@show_named_slot}>
+        <:slot :if={@show_named_slot} name="sidebar">
           <p data-testid="named-slot-content">Named slot revision {@slot_revision}</p>
-        </:sidebar>
+        </:slot>
         <p :if={@show_default_slot} data-testid="default-slot-content">
           Default slot revision {@slot_revision}: {@untrusted_slot}
         </p>
@@ -382,6 +385,13 @@ defmodule LiveViewReactExamplesWeb.LiveStreamsSlotsE2E do
      socket
      |> assign(:show_default_slot, false)
      |> mark_operation("remove_default_slot")}
+  end
+
+  def handle_event("restore_named_slot", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_named_slot, true)
+     |> mark_operation("restore_named_slot")}
   end
 
   def handle_event("remove_named_slot", _params, socket) do

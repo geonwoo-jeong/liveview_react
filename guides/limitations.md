@@ -23,11 +23,16 @@ compatibility modes.
 
 - The outer element is transport-only. There is no public outer-tag, class, or
   style option; ordinary assigns such as `class` are React props.
+- Named slots must be written as `<:slot name="...">`. HEEx gives a function
+  component no runtime way to tell a slot omitted by `:if` from an ordinary
+  empty-list attribute, so slot identity comes from the reserved `:slot` assign
+  rather than from the shape of a value.
 - HEEx slots are validated inert HTML wrappers, not a general HTML sanitizer.
-  Dynamic HEEx values still rely on Phoenix escaping. Interactive Phoenix
-  content is rejected: forms, `phx-*` and `data-phx-*` bindings, hooks,
-  LiveComponents, and nested LiveViewReact roots cannot be transported as
-  slots.
+  A fail-closed allowlist admits passive structure, text, lists, tables, and
+  neutral attributes. Active/resource tags, form controls, links, event
+  handlers, inline styles, URL-bearing attributes, custom elements, `phx-*`
+  and `data-phx-*` bindings, hooks, LiveComponents, and nested LiveViewReact
+  roots are rejected. Dynamic HEEx values still rely on Phoenix escaping.
 - Slot HTML is not a second LiveView subtree. Put interactivity in the owning
   React component or outside the React target.
 

@@ -11,7 +11,7 @@ const SLOT_NAME = /^[a-z][A-Za-z0-9_]*$/;
 const SLOT_TAG_NAME = /^([A-Za-z][A-Za-z0-9:-]*)/;
 const SLOT_ATTRIBUTE_NAME = /^([^\t\n\f\r />=<"'`\0]+)/;
 const HTML_WHITESPACE_ONLY = /^[\t\n\f\r ]*$/;
-const SAFE_SLOT_TAGS = new Set([
+const SAFE_SLOT_TAGS: ReadonlySet<string> = new Set([
   "abbr",
   "address",
   "article",
@@ -79,7 +79,7 @@ const SAFE_SLOT_TAGS = new Set([
   "var",
   "wbr",
 ]);
-const SAFE_SLOT_ATTRIBUTES = new Set([
+const SAFE_SLOT_ATTRIBUTES: ReadonlySet<string> = new Set([
   "abbr",
   "class",
   "colspan",
@@ -101,7 +101,7 @@ const SAFE_SLOT_ATTRIBUTES = new Set([
   "type",
   "value",
 ]);
-const URL_SLOT_ATTRIBUTES = new Set([
+const URL_SLOT_ATTRIBUTES: ReadonlySet<string> = new Set([
   "action",
   "archive",
   "background",
@@ -125,14 +125,12 @@ const URL_SLOT_ATTRIBUTES = new Set([
   "usemap",
   "xlink:href",
 ]);
-const NESTED_ROOT_ATTRIBUTES = new Set([
-  "data-react-checksum",
-  "data-react-target",
-  "data-reactid",
-  "data-reactroot",
-]);
 const SAFE_PREFIXED_ATTRIBUTE = /^(?:aria|data)-[a-z0-9_.:-]+$/;
-const UNSAFE_SLOT_NAMES = new Set(["__proto__", "constructor", "prototype"]);
+const UNSAFE_SLOT_NAMES: ReadonlySet<string> = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 
 interface SlotMarkupScan {
   readonly next: number;
@@ -187,13 +185,6 @@ function findSlotMarkupViolation(html: string): string | undefined {
 }
 
 function scanSlotMarkup(html: string, cursor: number): SlotMarkupScan {
-  if (html.startsWith("!--", cursor)) {
-    const commentEnd = html.indexOf("-->", cursor + 3);
-    return commentEnd === -1
-      ? { next: html.length, violation: "malformed HTML" }
-      : { next: commentEnd + 3 };
-  }
-
   const first = html[cursor];
   if (first === "!")
     return { next: html.length, violation: "markup declarations" };
@@ -276,7 +267,7 @@ function slotAttributeViolation(name: string): string | undefined {
     return "Phoenix-managed bindings";
   }
   if (
-    NESTED_ROOT_ATTRIBUTES.has(name) ||
+    name.startsWith("data-react") ||
     name.startsWith("data-liveview-react-")
   ) {
     return "nested React roots";

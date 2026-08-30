@@ -159,10 +159,30 @@ Do not adapt the old compact patch payload in application code. LiveViewReact
 accepts only its mandatory v2 initial frame and intentionally provides no v1
 parser, fallback, or compatibility mode.
 
-HEEx slots become inert React nodes. They cannot contain forms, `phx-*` or
-`data-phx-*` bindings, hooks, LiveComponents, or nested LiveViewReact roots.
-Move interactive content into the owning React component or keep it outside
-the root.
+HEEx slots become inert React nodes behind a fail-closed markup allowlist. They
+cannot contain links, form controls, active or resource-bearing tags,
+event/style/URL attributes, `phx-*` or `data-phx-*` bindings, hooks,
+LiveComponents, or nested LiveViewReact roots. Move interactive content into
+the owning React component or keep it outside the root.
+
+Named slots are written with the reserved `<:slot>` entry and an explicit
+`name`, not as `<:name>`:
+
+```diff
+-<:header>Title</:header>
++<:slot name="header">Title</:slot>
+```
+
+`react/1` classifies slots by assign name only; it never inspects an ordinary
+prop's value to decide whether it is "really" a slot. The old form is therefore
+not special-cased. A slot written the old way reaches the encoder as an ordinary
+prop and fails closed there, because its `inner_block` is a function rather than
+JSON. With the explicit form, a slot hidden by `:if` remains identifiable
+through the reserved `:slot` assign and is omitted. An ordinary `items={[]}`
+attribute continues to arrive as an empty-list React prop.
+
+Search your templates for `<:` and convert every occurrence rather than relying
+on a runtime error to find them.
 
 ## 6. Verify the clean break
 

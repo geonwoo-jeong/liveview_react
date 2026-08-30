@@ -132,10 +132,32 @@ Multiple checkboxes and multiple selects use `[]` names and keep values in
 local state order. Radio, number, range, date, textarea, and select controls use
 their native browser values; an empty numeric input becomes `null`.
 
-Field change handlers stop only the underlying native event from reaching
-LiveView's document delegation. React parent handlers still run. The hook sends
-one debounced `changeEvent` containing the full named values, `_target`, and
+Field change handlers stop the underlying native event from reaching LiveView's
+document delegation, so React's own `onChange` does not also trigger LiveView's
+form serialization. React parent handlers still run. The hook sends a debounced
+`changeEvent` containing the full named values, `_target`, and
 `_liveview_react_revision`.
+
+### Two change lanes reach the server
+
+`formProps` also sets `phx-change`, because Phoenix requires a change binding on
+the form that owns an upload input: `useLiveUpload` rejects an auto-upload whose
+form has none, and Phoenix drives upload preflight and progress through that
+event. As a result the same `changeEvent` can arrive over two lanes:
+
+- The **hook lane** sends structured JSON, so numbers, booleans, and nested
+  values keep their types, and it includes every value in `form.values`.
+- The **form lane** is LiveView's own serialization of the DOM form. It is
+  URL-encoded, so every value arrives as a string, and it fires for native
+  `change` events React does not translate into `onChange` — most visibly when a
+  text input loses focus after an edit. `_liveview_react_revision` still travels
+  with it through `revisionInputProps`, so `Forms.with_revision_from_params/2`
+  correlates both lanes.
+
+Handle `changeEvent` idempotently, and cast with a changeset rather than trusting
+the value types. If a field lives only in `form.values` and has no rendered
+input, the form lane omits it; keep such fields out of the changeset, render them
+as hidden inputs, or scope validation to `_target`.
 
 ## Validation, submission, and reconnect
 

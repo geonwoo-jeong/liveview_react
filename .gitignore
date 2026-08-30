@@ -33,6 +33,9 @@ liveview_react-*.tgz
 /playwright-report/
 /test-results/
 
+# Benchmark reports contain machine-local paths and timing data.
+/bench/upstream_comparison/results/
+
 # Ignore example build and dependency output.
 /liveview_react_examples/_build/
 /liveview_react_examples/deps/

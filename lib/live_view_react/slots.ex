@@ -27,9 +27,6 @@ defmodule LiveViewReact.Slots do
     itemid itemtype longdesc manifest ping poster profile src srcdoc srcset usemap
     xlink:href
   )
-  @nested_root_attributes ~w(
-    data-react-checksum data-react-target data-reactid data-reactroot
-  )
   @safe_prefixed_attribute ~r/\A(?:aria|data)-[a-z0-9_.:-]+\z/
 
   @doc """
@@ -164,13 +161,6 @@ defmodule LiveViewReact.Slots do
     end
   end
 
-  defp scan_slot_markup(<<"!--", rest::binary>>) do
-    case :binary.match(rest, "-->") do
-      :nomatch -> {:error, "malformed HTML"}
-      {index, 3} -> scan_slot_html(binary_part(rest, index + 3, byte_size(rest) - index - 3))
-    end
-  end
-
   defp scan_slot_markup(<<?!, _rest::binary>>), do: {:error, "markup declarations"}
   defp scan_slot_markup(<<??, _rest::binary>>), do: {:error, "processing instructions"}
   defp scan_slot_markup(<<?/, rest::binary>>), do: scan_closing_slot_tag(rest)
@@ -195,7 +185,6 @@ defmodule LiveViewReact.Slots do
          <<">", rest::binary>> <- trim_html_whitespace(rest) do
       scan_slot_html(rest)
     else
-      :error -> {:error, "malformed HTML"}
       {:error, _reason} = error -> error
       _other -> {:error, "malformed HTML"}
     end
@@ -253,30 +242,39 @@ defmodule LiveViewReact.Slots do
   end
 
   defp validate_slot_attribute("phx-hook"), do: {:error, "Phoenix hooks"}
+  defp validate_slot_attribute("style"), do: {:error, "style attributes"}
+
+  defp validate_slot_attribute(name) when name in @url_slot_attributes,
+    do: {:error, "URL-bearing attributes"}
 
   defp validate_slot_attribute(name) do
+    case prefixed_slot_attribute_violation(name) do
+      nil -> validate_safe_slot_attribute(name)
+      violation -> {:error, violation}
+    end
+  end
+
+  defp prefixed_slot_attribute_violation(name) do
     cond do
       String.starts_with?(name, "phx-") or String.starts_with?(name, "data-phx-") ->
-        {:error, "Phoenix-managed bindings"}
+        "Phoenix-managed bindings"
 
-      name in @nested_root_attributes or String.starts_with?(name, "data-liveview-react-") ->
-        {:error, "nested React roots"}
+      String.starts_with?(name, "data-react") or
+          String.starts_with?(name, "data-liveview-react-") ->
+        "nested React roots"
 
       String.starts_with?(name, "on") ->
-        {:error, "event handler attributes"}
-
-      name == "style" ->
-        {:error, "style attributes"}
-
-      name in @url_slot_attributes ->
-        {:error, "URL-bearing attributes"}
-
-      name in @safe_slot_attributes or Regex.match?(@safe_prefixed_attribute, name) ->
-        :ok
+        "event handler attributes"
 
       true ->
-        {:error, "non-inert attribute #{inspect(name)}"}
+        nil
     end
+  end
+
+  defp validate_safe_slot_attribute(name) do
+    if name in @safe_slot_attributes or Regex.match?(@safe_prefixed_attribute, name),
+      do: :ok,
+      else: {:error, "non-inert attribute #{inspect(name)}"}
   end
 
   defp consume_slot_attribute_value(html) do

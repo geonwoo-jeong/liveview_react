@@ -5,10 +5,8 @@ defmodule LiveViewReactExamplesWeb.LiveSlot do
     ~H"""
     <h1 class="flex justify-center mb-10 font-bold">Slot</h1>
     <.react id="slot-demo" component="Slot" socket={@socket} ssr={true}>
-      <div>button component passed as a slot and rendered</div>
-      <.button class="cursor-pointer">
-        button
-      </.button>
+      <div>Passive HEEx markup passed as a slot and rendered</div>
+      <span class="rounded bg-zinc-200 px-3 py-2">inert slot content</span>
     </.react>
     """
   end
