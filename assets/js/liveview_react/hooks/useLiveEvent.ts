@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { useLiveReact } from "./useLiveReact";
 
@@ -15,12 +15,16 @@ export function useLiveEvent<TPayload>(
   assertEventName(event);
 
   const { handleEvent, removeHandleEvent } = useLiveReact();
-  const onEvent = useEffectEvent(handler);
+  const handlerRef = useRef(handler);
+
+  useLayoutEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
 
   useEffect(() => {
     let active = true;
     const eventReference = handleEvent(event, (payload: TPayload) => {
-      if (active) onEvent(payload);
+      if (active) handlerRef.current(payload);
     });
 
     return () => {
