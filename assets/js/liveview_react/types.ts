@@ -7,7 +7,12 @@ export interface JsonObject {
 
 export type JsonArray = readonly JsonValue[];
 export type JsonValue =
-  null | boolean | number | string | JsonArray | JsonObject;
+  | null
+  | boolean
+  | number
+  | string
+  | JsonArray
+  | JsonObject;
 
 export type EventPayload = Readonly<Record<string, unknown>>;
 

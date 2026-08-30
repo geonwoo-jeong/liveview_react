@@ -38,7 +38,9 @@ export interface LiveFormOptions {
 }
 
 export type LiveFormControl =
-  HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+  | HTMLInputElement
+  | HTMLSelectElement
+  | HTMLTextAreaElement;
 
 export type LiveFormControlChangeEvent = ChangeEvent<LiveFormControl>;
 export type LiveFormControlFocusEvent = FocusEvent<LiveFormControl>;

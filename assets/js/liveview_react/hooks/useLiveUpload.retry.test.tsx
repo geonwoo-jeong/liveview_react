@@ -120,7 +120,8 @@ describe("useLiveUpload reconnect and retry", () => {
     await act(async () => api().retryInterrupted());
     expect(uploadTo).toHaveBeenCalledOnce();
     const retriedFiles = uploadTo.mock.calls[0]?.[2] as
-      readonly File[] | undefined;
+      | readonly File[]
+      | undefined;
     const retriedFile = retriedFiles?.[0];
     if (retriedFile === undefined) {
       throw new Error("Expected a retried File fixture");

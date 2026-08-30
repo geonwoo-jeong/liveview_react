@@ -63,7 +63,7 @@ CI lane because it adds retired and vulnerable dependency audits, unused
 dependency checking, and Dialyzer to the fast checks. `npm run quality:ci`
 similarly layers package assembly and a dependency audit on top of the fast
 JavaScript checks. The lint stage uses Oxlint with its TypeScript 7-aware
-`oxlint-tsgolint` backend.
+`oxlint-tsgolint` backend, while Oxfmt owns deterministic source formatting.
 
 ExUnit covers assign classification, encoding, compact patches, streams, slots,
 SSR, forms/uploads, the installer, and the HTML test helper. Vitest covers

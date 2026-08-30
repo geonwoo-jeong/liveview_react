@@ -286,7 +286,8 @@ describe("Vite SSR middleware", () => {
       );
 
       const middleware = use.mock.calls[0]?.[0] as
-        Connect.NextHandleFunction | undefined;
+        | Connect.NextHandleFunction
+        | undefined;
       if (!middleware) {
         throw new Error("Expected the SSR middleware to register");
       }
@@ -335,7 +336,8 @@ describe("Vite SSR middleware", () => {
     );
 
     const middleware = use.mock.calls[0]?.[0] as
-      Connect.NextHandleFunction | undefined;
+      | Connect.NextHandleFunction
+      | undefined;
     if (!middleware) throw new Error("Expected the SSR middleware to register");
 
     const request = createRequest(
@@ -394,7 +396,8 @@ describe("Vite SSR middleware", () => {
     );
 
     const middleware = use.mock.calls[0]?.[0] as
-      Connect.NextHandleFunction | undefined;
+      | Connect.NextHandleFunction
+      | undefined;
     if (!middleware) throw new Error("Expected the SSR middleware to register");
 
     const request = createRequest(renderFrame());
@@ -462,7 +465,8 @@ describe("Vite SSR middleware", () => {
       );
 
       const middleware = use.mock.calls[0]?.[0] as
-        Connect.NextHandleFunction | undefined;
+        | Connect.NextHandleFunction
+        | undefined;
       if (!middleware)
         throw new Error("Expected the SSR middleware to register");
 
@@ -519,7 +523,8 @@ describe("Vite SSR middleware", () => {
     );
 
     const middleware = use.mock.calls[0]?.[0] as
-      Connect.NextHandleFunction | undefined;
+      | Connect.NextHandleFunction
+      | undefined;
     if (!middleware) throw new Error("Expected the SSR middleware to register");
     const request = createRequest(
       renderFrame({

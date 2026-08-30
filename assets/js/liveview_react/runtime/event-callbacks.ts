@@ -5,7 +5,12 @@ interface JsonObject {
 }
 
 type JsonValue =
-  null | boolean | number | string | readonly JsonValue[] | JsonObject;
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | JsonObject;
 
 type EventPayload = Readonly<Record<string, JsonValue>>;
 type EventCommand = readonly [string, Readonly<Record<string, JsonValue>>];

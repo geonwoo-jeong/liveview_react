@@ -15,7 +15,7 @@ npm run quality:ci
 `mix quality` stays fast for routine local work. `mix quality_full` adds retired
 and vulnerable dependency audits, unused dependency checking, and Dialyzer. On
 the JavaScript side, `npm run quality` keeps the fast
-format/Oxlint/typecheck/test path and `npm run quality:ci` extends it with
+Oxfmt/Oxlint/typecheck/test path and `npm run quality:ci` extends it with
 package assembly plus a dependency audit. Oxlint runs its TypeScript 7-aware
 semantic rules through `oxlint-tsgolint`.
 

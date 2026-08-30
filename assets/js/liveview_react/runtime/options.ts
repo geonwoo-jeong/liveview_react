@@ -28,7 +28,10 @@ function isOptionsObject(value: unknown): value is Record<string, unknown> {
 }
 
 type FunctionOptionKey =
-  "onCaughtError" | "onRecoverableError" | "onUncaughtError" | "wrapRoot";
+  | "onCaughtError"
+  | "onRecoverableError"
+  | "onUncaughtError"
+  | "wrapRoot";
 
 function readOptionalFunction<TKey extends FunctionOptionKey>(
   options: Record<string, unknown>,
