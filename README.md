@@ -6,8 +6,6 @@
   />
 </p>
 
-<h1 align="center">liveview_react</h1>
-
 <p align="center">
   <strong>React 19 inside Phoenix LiveView, with LiveView still in charge.</strong>
 </p>
@@ -20,7 +18,7 @@
   <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/limitations.md">Limitations</a>
 </p>
 
-`liveview_react` mounts normal React roots inside Phoenix LiveView. LiveView
+LiveViewReact mounts normal React roots inside Phoenix LiveView. LiveView
 continues to own routing, authoritative server state, validation, reconnects,
 and DOM replacement. React owns only the component tree you explicitly mount.
 There is no second socket, hidden page-wide root, or SPA runtime.
@@ -54,7 +52,7 @@ and [Boundaries](#boundaries) first.
 ## Why
 
 Pure LiveView is still the right default for most Phoenix screens. Use
-`liveview_react` when one bounded part of the page needs React itself:
+LiveViewReact when one bounded part of the page needs React itself:
 
 - a React-only component library
 - substantial local interaction that would otherwise become imperative hooks
@@ -182,7 +180,7 @@ state. Removing the `<.react>` element, changing its `id`, or changing its
 
 ## Client API
 
-`liveview_react` exports:
+LiveViewReact exports:
 
 - `createLiveViewReact`
 - `createLiveViewReactServer`
@@ -246,7 +244,7 @@ These are intentional product constraints, not compatibility gaps:
   are not part of the contract.
 - Slot HTML uses a fail-closed passive-markup allowlist. Links, form controls,
   resource-bearing tags, event/style/URL attributes, `phx-*`, `phx-hook`,
-  nested LiveViews, and nested `liveview_react` roots are rejected.
+  nested LiveViews, and nested LiveViewReact roots are rejected.
 - A file input must still be rendered by Phoenix with
   `<.live_file_input>` outside the React-owned target. React cannot recreate
   Phoenix upload internals.
