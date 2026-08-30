@@ -172,6 +172,45 @@ defmodule LiveViewReact.PropsDiffTest do
       assert_patches_equal(react.props_diff, [])
     end
 
+    test "reads the props diff default from runtime application configuration" do
+      assigns = %{
+        biography: String.duplicate("unchanged", 40),
+        username: "Jane",
+        __changed__: %{username: "John"}
+      }
+
+      with_application_env(:enable_props_diff, false, fn ->
+        react = render_react_assigns(assigns)
+
+        assert react.props_kind == "snapshot"
+
+        assert react.props == %{
+                 "biography" => assigns.biography,
+                 "username" => "Jane"
+               }
+      end)
+
+      with_application_env(:enable_props_diff, true, fn ->
+        react = render_react_assigns(assigns)
+
+        assert react.props_kind == "patch"
+
+        assert_patches_equal(react.props_diff, [
+          %{"op" => "replace", "path" => "/username", "value" => "Jane"}
+        ])
+      end)
+    end
+
+    test "rejects a non-boolean props diff application configuration" do
+      with_application_env(:enable_props_diff, :invalid, fn ->
+        assert_raise ArgumentError,
+                     "LiveViewReact expects config :liveview_react, :enable_props_diff to be a boolean, got: :invalid",
+                     fn ->
+                       render_react_assigns(%{username: "Jane", __changed__: %{username: "John"}})
+                     end
+      end)
+    end
+
     test "dead render emits all current props instead of a changed subset" do
       react =
         render_react_assigns(%{
@@ -218,6 +257,20 @@ defmodule LiveViewReact.PropsDiffTest do
                    fn ->
                      render_react_assigns(assigns)
                    end
+    end
+  end
+
+  defp with_application_env(key, value, fun) do
+    previous_value = Application.fetch_env(:liveview_react, key)
+    Application.put_env(:liveview_react, key, value)
+
+    try do
+      fun.()
+    after
+      case previous_value do
+        {:ok, previous} -> Application.put_env(:liveview_react, key, previous)
+        :error -> Application.delete_env(:liveview_react, key)
+      end
     end
   end
 end
