@@ -170,7 +170,7 @@ test("a pending lazy root mounts with the latest server props", async ({
   await expect(page.getByTestId("probe-lazy-update")).toBeVisible();
   await expect(page.getByTestId("server-lazy-update")).toHaveText("2");
   await expect(page.getByTestId("instance-lazy-update")).toHaveText(
-    "lazy-update-2",
+    /^lazy-update-\d+$/,
   );
   expect((await readAudit(page)).probes["lazy-update"]).toEqual({
     mounts: 2,

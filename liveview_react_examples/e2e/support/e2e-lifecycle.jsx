@@ -10,12 +10,19 @@ import {
   recordStrictRemoval,
 } from "./e2e-harness";
 
+let nextInstanceNumber = 0;
+
+function allocateInstanceId(label) {
+  nextInstanceNumber += 1;
+  return `${label}-${nextInstanceNumber}`;
+}
+
 export function E2ELifecycleProbe({ label, queuedItems = [], serverVersion }) {
-  const [instanceId, setInstanceId] = useState("pending");
+  const [instanceId] = useState(() => allocateInstanceId(label));
   const [localCount, setLocalCount] = useState(0);
 
   useEffect(() => {
-    setInstanceId(recordProbeMount(label));
+    recordProbeMount(label);
     return () => recordProbeCleanup(label);
   }, [label]);
 

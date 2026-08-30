@@ -35,6 +35,22 @@ if [[ -e "$package_root/assets/js" ]]; then
   exit 1
 fi
 
+unexpected_dist_file="$(
+  find "$package_root/dist" -type f \
+    \( \
+      -path '*/tests/*' -o \
+      -name '*.bench.*' -o \
+      -name '*.test-support.*' -o \
+      -name '*.test.*' \
+    \) \
+    -print -quit
+)"
+
+if [[ -n "$unexpected_dist_file" ]]; then
+  echo "Hex package contains a development-only artifact: $unexpected_dist_file" >&2
+  exit 1
+fi
+
 node --eval '
   const manifest = require(process.argv[1]);
   if (manifest.name !== "liveview_react") {

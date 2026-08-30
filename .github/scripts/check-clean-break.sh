@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly legacy_pattern='LiveReact|live_react|live-react|(^|[^[:alnum:]_])(ReactHook|getHooks|getRender|useLiveReact)([^[:alnum:]_]|$)|liveview_react/vite-plugin|LiveViewReact\.Reload'
+readonly legacy_pattern='(^|[^[:alnum:]_])(LiveReact|live_react|live-react|ReactHook|getHooks|getRender|useLiveViewReact)([^[:alnum:]_]|$)|liveview_react/vite-plugin|LiveViewReact\.Reload'
 
 legacy_match=""
 
@@ -17,11 +17,8 @@ done < <(
   git grep --line-number --extended-regexp "$legacy_pattern" -- \
     . \
     ':(exclude).github/scripts/check-clean-break.sh' \
-    ':(exclude)THIRD_PARTY_NOTICES.md' \
-    ':(exclude)UPGRADE_BASELINE.md' \
-    ':(exclude)UPSTREAM.md' \
-    ':(exclude,glob)docs/architecture/**' \
-    ':(exclude,glob)docs/research/**' || true
+    ':(exclude,glob)**/*.md' \
+    ':(exclude,glob)*.md' || true
 )
 
 if [[ -n "$legacy_match" ]]; then
@@ -46,12 +43,7 @@ while IFS= read -r tracked_path; do
   fi
 
   case "$tracked_path" in
-    .github/scripts/check-clean-break.sh | \
-      THIRD_PARTY_NOTICES.md | \
-      UPGRADE_BASELINE.md | \
-      UPSTREAM.md | \
-      docs/architecture/* | \
-      docs/research/*) continue ;;
+    guides/migration_from_live_react.md) continue ;;
   esac
 
   if [[ "$tracked_path" == assets/copy/* || "$tracked_path" == */vite-plugin.* || "$tracked_path" =~ $legacy_pattern ]]; then

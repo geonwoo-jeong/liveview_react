@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
+import { deepStrictEqual } from "node:assert/strict";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -24,6 +26,20 @@ const temporaryRoot = mkdtempSync(join(tmpdir(), "liveview-react-pack-"));
 const consumerDirectory = join(temporaryRoot, "consumer");
 const npmCache = join(temporaryRoot, "npm-cache");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const expectedExportMap = Object.freeze({
+  ".": Object.freeze({
+    types: "./dist/index.d.ts",
+    import: "./dist/index.js",
+  }),
+  "./server": Object.freeze({
+    types: "./dist/server.d.ts",
+    import: "./dist/server.js",
+  }),
+  "./vite": Object.freeze({
+    types: "./dist/vite.d.ts",
+    import: "./dist/vite.js",
+  }),
+});
 
 function run(command: string, args: readonly string[], cwd: string): string {
   return execFileSync(command, args, {
@@ -34,6 +50,11 @@ function run(command: string, args: readonly string[], cwd: string): string {
 }
 
 try {
+  const packageManifest = JSON.parse(
+    readFileSync(join(projectRoot, "package.json"), "utf8"),
+  ) as { readonly exports?: unknown };
+  deepStrictEqual(packageManifest.exports, expectedExportMap);
+
   const dryRunOutput = run(
     npmCommand,
     ["pack", "--dry-run", "--json", "--ignore-scripts", "--cache", npmCache],
@@ -61,6 +82,19 @@ try {
   if (!packResult) throw new Error("npm pack did not return a package result");
 
   const packedPaths = new Set(packResult.files.map((file) => file.path));
+  const forbiddenPackedPath = [...packedPaths].find(
+    (path) =>
+      path.startsWith("dist/tests/") ||
+      path.includes(".bench.") ||
+      path.includes(".test-support.") ||
+      path.includes(".test."),
+  );
+  if (forbiddenPackedPath) {
+    throw new Error(
+      `Packed package contains a development-only artifact: ${forbiddenPackedPath}`,
+    );
+  }
+
   for (const requiredPath of [
     "dist/index.js",
     "dist/index.d.ts",
@@ -129,6 +163,40 @@ try {
     const server = await import("liveview_react/server");
     const vite = await import("liveview_react/vite");
 
+    const assertExactExports = (name, module, expected) => {
+      const actual = Object.keys(module).toSorted();
+      const wanted = expected.toSorted();
+      if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
+        throw new Error(
+          name + " exports " + JSON.stringify(actual) +
+            "; expected " + JSON.stringify(wanted),
+        );
+      }
+    };
+
+    assertExactExports("Root entry point", client, [
+      "Link",
+      "LiveEventReplyCancelledError",
+      "LiveEventReplyTimeoutError",
+      "LiveFormSubmitCancelledError",
+      "LiveFormSubmitInvalidError",
+      "createLiveViewReact",
+      "useEventReply",
+      "useLiveConnection",
+      "useLiveEvent",
+      "useLiveForm",
+      "useLiveNavigation",
+      "useLiveReact",
+      "useLiveUpload",
+    ]);
+    assertExactExports("Server entry point", server, [
+      "createLiveViewReactServer",
+    ]);
+    assertExactExports("Vite entry point", vite, [
+      "default",
+      "liveViewReactPlugin",
+    ]);
+
     if (typeof client.createLiveViewReact !== "function") {
       throw new Error("Root export is missing createLiveViewReact");
     }
@@ -172,9 +240,10 @@ try {
     }
     if (
       typeof vite.default !== "function" ||
-      typeof vite.liveViewReactPlugin !== "function"
+      typeof vite.liveViewReactPlugin !== "function" ||
+      vite.default !== vite.liveViewReactPlugin
     ) {
-      throw new Error("Vite export is missing the plugin factory");
+      throw new Error("Vite default and named exports must be the same plugin factory");
     }
 
     let legacySubpathRejected = false;
@@ -214,7 +283,10 @@ try {
         type LiveUploadConfig,
       } from "liveview_react";
       import { createLiveViewReactServer } from "liveview_react/server";
-      import liveViewReactPlugin from "liveview_react/vite";
+      import liveViewReactPlugin, {
+        liveViewReactPlugin as namedLiveViewReactPlugin,
+        type LiveViewReactPluginOptions,
+      } from "liveview_react/vite";
 
       const Counter = (_props: { readonly count: number }) => null;
       const components = {
@@ -274,7 +346,14 @@ try {
         return <button phx-click="increment" phx-value-count={1} />;
       }
 
-      liveViewReactPlugin();
+      const viteOptions = {
+        componentDirectory: "./react-components",
+        entrypoint: "./js/server.ts",
+        maxBodyBytes: 1_048_576,
+        path: "/ssr_render",
+      } satisfies Required<LiveViewReactPluginOptions>;
+      liveViewReactPlugin(viteOptions);
+      namedLiveViewReactPlugin(viteOptions);
       void HookConsumer;
       void Link;
       void useEventReply;

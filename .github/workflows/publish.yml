@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -42,41 +44,11 @@ jobs:
           node-version: 24.20.0
           cache: npm
 
-      - name: Install Mix dependencies
-        run: mix deps.get
+      - name: Run local release dry-run checks
+        run: .github/scripts/release-dry-run.sh
 
-      - name: Check Mix formatting
-        run: mix format --check-formatted
-
-      - name: Compile Hex package
-        run: mix compile --warnings-as-errors
-
-      - name: Run Credo
-        run: mix credo
-
-      - name: Run ExUnit
-        run: mix test
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Check npm package types
-        run: npm run typecheck
-
-      - name: Test npm package
-        run: npm test
-
-      - name: Check npm package artifact
-        run: npm run pack:check
-
-      - name: Verify package identity and synchronized versions
-        run: .github/scripts/check-package-identity.sh
-
-      - name: Check Hex package contents
-        run: .github/scripts/check-hex-package.sh
-
-      - name: Check npm package
-        run: npm publish --dry-run --access public
+      - name: Exercise npm publish in dry-run mode
+        run: npm publish --dry-run --access public --ignore-scripts
 
   publish:
     name: Publish liveview_react
@@ -88,6 +60,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -110,6 +84,9 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Lint JavaScript sources
+        run: npm run lint
 
       - name: Check npm package types
         run: npm run typecheck

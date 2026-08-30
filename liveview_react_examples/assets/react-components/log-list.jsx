@@ -26,7 +26,7 @@ export function LogList() {
         <input
           type="checkbox"
           checked={showItems}
-          onChange={(e) => {
+          onChange={() => {
             setShowItems((current) => !current);
           }}
         />

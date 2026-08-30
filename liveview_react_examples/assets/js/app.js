@@ -12,8 +12,8 @@ import "../css/app.css";
 
 // Show progress bar on live navigation and form submits
 topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
-window.addEventListener("phx:page-loading-start", (_info) => topbar.show(300));
-window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
+window.addEventListener("phx:page-loading-start", () => topbar.show(300));
+window.addEventListener("phx:page-loading-stop", () => topbar.hide());
 
 function connectLiveView(registeredComponents, e2eOptions = {}) {
   const liveViewReact = createLiveViewReact({
