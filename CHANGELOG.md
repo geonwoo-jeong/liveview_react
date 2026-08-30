@@ -10,6 +10,8 @@
   `LiveViewReactHook`.
 - Standardized SSR on `createLiveViewReactServer()` and the
   `liveview_react/vite` entry point.
+- Read global SSR and props-diff flags from runtime application configuration,
+  and start OTP `:inets` as part of the Vite SSR adapter contract.
 - Added immutable compact props patches, reconnect recovery, Phoenix Streams,
   and inert HEEx slot transport.
 - Added SSR/hydration identity, lazy component loading, StrictMode, root error
