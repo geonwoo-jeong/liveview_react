@@ -12,54 +12,6 @@ defmodule LiveViewReactExamplesWeb.LiveDemoAssigns do
   end
 
   defp set_active_demo(_params, _url, socket) do
-    demo =
-      case {socket.view, socket.assigns.live_action} do
-        {LiveViewReactExamplesWeb.LiveSimple, _} ->
-          :simple
-
-        {LiveViewReactExamplesWeb.LiveSimpleProps, _} ->
-          :simple_props
-
-        {LiveViewReactExamplesWeb.LiveTypescript, _} ->
-          :typescript
-
-        {LiveViewReactExamplesWeb.LiveLazy, _} ->
-          :lazy
-
-        {LiveViewReactExamplesWeb.LiveCounter, _} ->
-          :counter
-
-        {LiveViewReactExamplesWeb.LiveLogList, _} ->
-          :log_list
-
-        {LiveViewReactExamplesWeb.LiveFlashSonner, _} ->
-          :flash_sonner
-
-        {LiveViewReactExamplesWeb.LiveSSR, _} ->
-          :ssr
-
-        {LiveViewReactExamplesWeb.LiveHybridForm, _} ->
-          :hybrid_form
-
-        {LiveViewReactExamplesWeb.LiveSlot, _} ->
-          :slot
-
-        {LiveViewReactExamplesWeb.LiveContext, _} ->
-          :context
-
-        {LiveViewReactExamplesWeb.LiveLinkDemo, _} ->
-          :link_demo
-
-        {LiveViewReactExamplesWeb.LiveLinkUsage, _} ->
-          :link_usage
-
-        {LiveViewReactExamplesWeb.LiveStreamDemo, _} ->
-          :stream_demo
-
-        {_view, _live_action} ->
-          nil
-      end
-
-    {:cont, assign(socket, demo: demo)}
+    {:cont, assign(socket, demo: LiveViewReactExamples.demo_id_for_view(socket.view))}
   end
 end

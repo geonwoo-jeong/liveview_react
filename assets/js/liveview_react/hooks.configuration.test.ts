@@ -12,6 +12,7 @@ import {
   encodeProps,
   findElement,
   hydrationDescriptor,
+  expectLifecycleFailure,
   invoke,
   lastRenderedProps,
   renderMock,
@@ -190,9 +191,10 @@ describe("LiveViewReactHook", () => {
 
     invoke(lazyRuntime.hooks.LiveViewReactHook.mounted, hook);
     hook.el.setAttribute("data-component", "AnotherComponent");
-    expect(() =>
-      invoke(lazyRuntime.hooks.LiveViewReactHook.updated, hook),
-    ).toThrow("data-component cannot change");
+    expectLifecycleFailure(
+      () => invoke(lazyRuntime.hooks.LiveViewReactHook.updated, hook),
+      "data-component cannot change",
+    );
 
     resolveComponent({ default: TestComponent });
     await componentPromise;
@@ -302,7 +304,8 @@ describe("LiveViewReactHook", () => {
   it("fails fast when data-component is missing", () => {
     const hook = createMockLiveViewHook();
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.mounted, hook),
       "data-component must name a registered component",
     );
   });
@@ -310,7 +313,8 @@ describe("LiveViewReactHook", () => {
   it("fails fast when the component is not registered", () => {
     const hook = createMockLiveViewHook({ "data-component": "Missing" });
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.mounted, hook),
       'Component "Missing" is not registered',
     );
   });

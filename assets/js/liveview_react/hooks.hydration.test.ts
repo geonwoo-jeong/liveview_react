@@ -8,6 +8,7 @@ import {
   encodeProps,
   findComponentProps,
   hydrationDescriptor,
+  expectLifecycleFailure,
   invoke,
   lastRenderedProps,
   reactElementProps,
@@ -137,7 +138,7 @@ describe("LiveViewReactHook", () => {
       { "data-react-hydration": descriptor },
     );
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow();
+    expectLifecycleFailure(() => invoke(liveViewReactHook.mounted, hook));
   });
 
   it("hydrates the exact dead stream frame before flushing a newer connected snapshot", () => {
@@ -275,7 +276,8 @@ describe("LiveViewReactHook", () => {
       },
     );
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.mounted, hook),
       "must omit data-streams-diff payload",
     );
   });
@@ -444,7 +446,8 @@ describe("LiveViewReactHook", () => {
       "data-slots": JSON.stringify({ default: "/w==" }),
     });
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.mounted, hook),
       "valid base64-encoded UTF-8",
     );
   });
@@ -494,7 +497,8 @@ describe("LiveViewReactHook", () => {
       }),
     });
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.mounted, hook),
       "as both ordinary prop and slot prop",
     );
   });

@@ -26,5 +26,10 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["js/**/*", "react-components/**/*", "vite.config.js"]
+  "include": [
+    "discovered-components/**/*",
+    "js/**/*",
+    "react-components/**/*",
+    "vite.config.js"
+  ]
 }

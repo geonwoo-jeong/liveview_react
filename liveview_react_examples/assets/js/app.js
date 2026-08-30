@@ -6,20 +6,51 @@ import "phoenix_html";
 import { Socket } from "phoenix";
 import { LiveSocket } from "phoenix_live_view";
 import topbar from "topbar";
-import components from "../react-components";
+import discoveredComponents from "virtual:liveview-react/components";
+import manualComponents from "../react-components";
+import { clientRootOptions } from "../react-components/root-options";
 import { createLiveViewReact } from "liveview_react";
 import "../css/app.css";
+
+const components = Object.freeze({
+  ...manualComponents,
+  ...discoveredComponents,
+});
 
 // Show progress bar on live navigation and form submits
 topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
 window.addEventListener("phx:page-loading-start", () => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", () => topbar.hide());
 
+function mergeRootOptions(baseOptions, overrideOptions = {}) {
+  const baseWrapRoot = baseOptions.wrapRoot;
+  const overrideWrapRoot = overrideOptions.wrapRoot;
+  const wrapRoot =
+    baseWrapRoot && overrideWrapRoot
+      ? (context) =>
+          overrideWrapRoot(
+            Object.freeze({
+              ...context,
+              children: baseWrapRoot(context),
+            }),
+          )
+      : (overrideWrapRoot ?? baseWrapRoot);
+
+  return Object.freeze({
+    ...baseOptions,
+    ...overrideOptions,
+    ...(wrapRoot ? { wrapRoot } : {}),
+  });
+}
+
 function connectLiveView(registeredComponents, e2eOptions = {}) {
+  const rootOptions = mergeRootOptions(
+    clientRootOptions,
+    e2eOptions.rootOptions,
+  );
   const liveViewReact = createLiveViewReact({
-    ...(e2eOptions.rootOptions ?? {}),
+    ...rootOptions,
     components: registeredComponents,
-    strictMode: __LIVEVIEW_REACT_E2E__,
   });
   const liveViewReactHook = e2eOptions.auditHook
     ? e2eOptions.auditHook(liveViewReact.hooks.LiveViewReactHook)

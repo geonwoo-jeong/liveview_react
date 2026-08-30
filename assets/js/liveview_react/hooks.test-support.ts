@@ -1,5 +1,5 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 
 import { createIdentifierPrefix } from "./runtime/identifier-prefix";
 import { createMockLiveViewHook } from "./tests/helpers";
@@ -185,4 +185,58 @@ export function setAttributes(
     if (value === null) hook.el.removeAttribute(name);
     else hook.el.setAttribute(name, value);
   }
+}
+
+/**
+ * Asserts that a hook lifecycle callback fails without breaking LiveView's DOM
+ * patch. The callback itself must not throw; the failure is reported through a
+ * queued microtask so only the failing root is torn down. The original error is
+ * preserved as the reported error's cause.
+ */
+export function expectLifecycleFailure(
+  run: () => void,
+  expected?: string | RegExp,
+): void {
+  const queued: VoidFunction[] = [];
+  const queueMicrotaskSpy = vi
+    .spyOn(globalThis, "queueMicrotask")
+    .mockImplementation((callback: VoidFunction) => {
+      queued.push(callback);
+    });
+
+  try {
+    expect(run).not.toThrow();
+  } finally {
+    queueMicrotaskSpy.mockRestore();
+  }
+
+  expect(queued).toHaveLength(1);
+
+  let reported: unknown;
+  expect(() => {
+    try {
+      queued[0]?.();
+    } catch (error: unknown) {
+      reported = error;
+      throw error;
+    }
+  }).toThrow();
+
+  if (expected === undefined) return;
+
+  const messages: string[] = [];
+  for (let error = reported; error instanceof Error; error = error.cause) {
+    messages.push(error.message);
+  }
+
+  const matched = messages.some((message) =>
+    typeof expected === "string"
+      ? message.includes(expected)
+      : expected.test(message),
+  );
+
+  expect(
+    matched,
+    `expected one of ${JSON.stringify(messages)} to match ${String(expected)}`,
+  ).toBe(true);
 }
