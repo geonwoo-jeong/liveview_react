@@ -1,7 +1,7 @@
 <p align="center">
   <img
     src="guides/images/liveview_react_logo.png"
-    alt="liveview_react logo icon: a phoenix combined with React-style atomic orbits"
+    alt="LiveViewReact logo: a warm phoenix transitioning into React cyan"
     width="220"
   />
 </p>
