@@ -91,12 +91,6 @@ interface ControllerOptions {
   readonly id: string;
 }
 
-interface StreamRow {
-  readonly __dom_id: string;
-  readonly label: string;
-  readonly version: number;
-}
-
 interface NavigationAudit {
   readonly cleanupCount: number;
   readonly finalText: string | null;

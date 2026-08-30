@@ -21,13 +21,13 @@ defmodule Mix.Tasks.LiveviewReact.Install do
   @igniter_args Module.concat(["Igniter", "Mix", "Task", "Args"])
   @igniter_info Module.concat(["Igniter", "Mix", "Task", "Info"])
   @igniter_task Module.concat(["Igniter", "Mix", "Task"])
-  @installer Module.concat(["LiveViewReact", "Igniter"])
   @phoenix_vite_dep {:phoenix_vite, "~> 0.5"}
   @vite_config_path "assets/vite.config.mjs"
   @bun_schema [bun: :boolean]
   @bun_aliases [b: :bun]
 
   @impl Mix.Task
+  @spec run([String.t()]) :: no_return()
   def run(_argv) do
     Mix.raise("Install LiveViewReact with `mix igniter.install liveview_react`.")
   end
@@ -78,7 +78,7 @@ defmodule Mix.Tasks.LiveviewReact.Install do
   @doc false
   def igniter(igniter) do
     Loader.load!()
-    install = Function.capture(@installer, :install, 2)
+    install = Function.capture(installer_module(), :install, 2)
     install.(igniter, demo: igniter.args.options[:demo])
   end
 
@@ -101,6 +101,10 @@ defmodule Mix.Tasks.LiveviewReact.Install do
 
   defp installer_installs(true), do: []
   defp installer_installs(false), do: [@phoenix_vite_dep]
+
+  defp installer_module do
+    String.to_existing_atom("Elixir.LiveViewReact.Igniter")
+  end
 
   defp read_vite_config(path) do
     case File.read(path) do

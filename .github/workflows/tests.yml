@@ -66,6 +66,9 @@ jobs:
       - name: Resolve ${{ matrix.profile }} compatibility dependencies
         run: mix deps.get
 
+      - name: Audit retired Hex dependencies
+        run: mix hex.audit
+
       - name: Restore Dialyzer PLT cache
         if: matrix.profile == 'latest'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -78,6 +81,9 @@ jobs:
 
       - name: Compile dependencies
         run: mix deps.compile
+
+      - name: Audit vulnerable Mix dependencies
+        run: mix deps.audit
 
       - name: Check formatting
         run: mix format --check-formatted
@@ -181,8 +187,8 @@ jobs:
       - name: Check package contents
         run: npm run pack:check
 
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
 
   package:
     name: Hex and npm package artifacts
@@ -276,6 +282,10 @@ jobs:
       - name: Install Mix dependencies
         run: mix deps.get
 
+      - name: Audit retired example Hex dependencies
+        if: matrix.node == '24.20.0'
+        run: mix hex.audit
+
       - name: Check Mix formatting
         run: mix format --check-formatted
 
@@ -296,6 +306,11 @@ jobs:
       - name: Install asset dependencies
         working-directory: liveview_react_examples/assets
         run: npm ci
+
+      - name: Audit example asset dependencies
+        if: matrix.node == '24.20.0'
+        working-directory: liveview_react_examples/assets
+        run: npm audit --audit-level=high
 
       - name: Check asset types
         working-directory: liveview_react_examples/assets

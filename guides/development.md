@@ -4,20 +4,20 @@ Install both toolchains, then run the independent verification suites:
 
 ```sh
 mix deps.get
-mix format --check-formatted
-mix compile --force --warnings-as-errors
-mix credo --strict
-mix test
-mix dialyzer
+mix quality
+mix quality_full
 
 npm ci
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm run pack:check
+npm run quality
+npm run quality:ci
 ```
+
+`mix quality` stays fast for routine local work. `mix quality_full` adds retired
+and vulnerable dependency audits, unused dependency checking, and Dialyzer. On
+the JavaScript side, `npm run quality` keeps the fast
+format/Oxlint/typecheck/test path and `npm run quality:ci` extends it with
+package assembly plus a dependency audit. Oxlint runs its TypeScript 7-aware
+semantic rules through `oxlint-tsgolint`.
 
 The example application lives in `liveview_react_examples`. Its npm dependency
 points at the repository root, so build the library package before installing

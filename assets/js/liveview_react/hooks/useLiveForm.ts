@@ -455,7 +455,7 @@ export function useLiveForm<
     }
 
     return promise;
-  }, [cancelActiveSubmit]);
+  }, [cancelActiveSubmit, commitState]);
 
   const receiveSubmitEvent = useCallback(
     (payload: unknown): void => {

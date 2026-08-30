@@ -309,6 +309,9 @@ export function liveViewReactPlugin(
         );
       }
 
+      // Connect ignores handler return values, while returning this Promise lets
+      // callers and tests await completion without changing runtime behavior.
+      // oxlint-disable-next-line typescript/no-misused-promises
       server.middlewares.use(async (request, response, next) => {
         const requestPath = request.url?.split("?", 1)[0];
         if (request.method !== "POST" || requestPath !== path) {

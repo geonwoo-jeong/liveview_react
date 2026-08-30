@@ -20,7 +20,7 @@ defmodule LiveViewReact.MixProject do
   end
 
   def cli do
-    [preferred_envs: [quality: :test]]
+    [preferred_envs: [quality: :test, quality_full: :test]]
   end
 
   def application do
@@ -55,6 +55,7 @@ defmodule LiveViewReact.MixProject do
       {:telemetry, "~> 1.4"},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.4", only: :test},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
@@ -122,6 +123,16 @@ defmodule LiveViewReact.MixProject do
         "format --check-formatted",
         "compile --force --warnings-as-errors",
         "credo --strict",
+        "test"
+      ],
+      quality_full: [
+        "hex.audit",
+        "deps.audit",
+        "deps.unlock --check-unused",
+        "format --check-formatted",
+        "compile --force --warnings-as-errors",
+        "credo --strict",
+        "dialyzer",
         "test"
       ]
     ]

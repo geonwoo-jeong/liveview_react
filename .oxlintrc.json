@@ -1,0 +1,58 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "vitest"],
+  "categories": {
+    "correctness": "off"
+  },
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "no-console": "error",
+    "no-unsafe-optional-chaining": "error",
+    "no-undef": "error",
+    "no-unused-vars": "error",
+    "react/exhaustive-deps": "error",
+    "react/rules-of-hooks": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "vitest/no-focused-tests": "error"
+  },
+  "env": {
+    "browser": true,
+    "builtin": true,
+    "node": true
+  },
+  "globals": {
+    "__LIVEVIEW_REACT_E2E__": "readonly"
+  },
+  "ignorePatterns": [
+    "**/_build/**",
+    "**/coverage/**",
+    "**/deps/**",
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/playwright-report/**",
+    "**/priv/static/**",
+    "**/test-results/**"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.{js,jsx,mjs}", "**/*.{test,spec}.{ts,tsx}"],
+      "rules": {
+        "typescript/no-floating-promises": "off",
+        "typescript/no-misused-promises": "off"
+      }
+    },
+    {
+      "files": [
+        ".github/scripts/**/*.mjs",
+        "bench/upstream_comparison/**/*.mjs",
+        "liveview_react_examples/assets/scripts/**/*.mjs"
+      ],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
+}

@@ -38,6 +38,7 @@ defmodule LiveViewReact.Installer.Loader do
     :ok
   end
 
+  @spec raise_unavailable!([String.t()]) :: no_return()
   defp raise_unavailable!(modules) do
     Mix.raise("Igniter installer modules are unavailable: #{Enum.join(modules, ", ")}")
   end
