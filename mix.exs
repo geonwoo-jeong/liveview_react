@@ -13,8 +13,14 @@ defmodule LiveViewReact.MixProject do
       deps: deps(),
       description: "React integration for Phoenix LiveView",
       package: package(),
-      docs: docs()
+      docs: docs(),
+      aliases: aliases(),
+      dialyzer: [plt_add_apps: [:mix]]
     ]
+  end
+
+  def cli do
+    [preferred_envs: [quality: :test]]
   end
 
   def application do
@@ -40,13 +46,33 @@ defmodule LiveViewReact.MixProject do
       {:phoenix_vite, "~> 0.5", only: [:dev, :test], runtime: false},
       {:ecto, "~> 3.14", optional: true},
       {:phoenix_ecto, "~> 4.7", optional: true},
-      {:phoenix, "~> 1.8.13"},
+      {:phoenix,
+       ci_dependency_requirement(
+         "LIVEVIEW_REACT_CI_PHOENIX_REQUIREMENT",
+         "~> 1.8",
+         "== 1.8.0"
+       )},
       {:phoenix_html, "~> 4.3"},
-      {:phoenix_live_view, "~> 1.2.11"},
+      {:phoenix_live_view,
+       ci_dependency_requirement(
+         "LIVEVIEW_REACT_CI_LIVE_VIEW_REQUIREMENT",
+         "~> 1.2.11",
+         "== 1.2.11"
+       )},
       {:telemetry, "~> 1.4"},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:stream_data, "~> 1.4", only: :test},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
+  end
+
+  defp ci_dependency_requirement(variable, default, minimum) do
+    case System.get_env(variable) do
+      nil -> default
+      requirement when requirement in [default, minimum] -> requirement
+      requirement -> raise "invalid #{variable}: #{inspect(requirement)}"
+    end
   end
 
   defp package do
@@ -70,6 +96,9 @@ defmodule LiveViewReact.MixProject do
       extras: [
         "README.md",
         "guides/installation.md",
+        "guides/getting_started.md",
+        "guides/architecture.md",
+        "guides/component_api.md",
         "guides/client_hooks.md",
         "guides/events.md",
         "guides/forms.md",
@@ -79,12 +108,28 @@ defmodule LiveViewReact.MixProject do
         "guides/deployment.md",
         "guides/development.md",
         "guides/ssr.md",
+        "guides/lazy_loading.md",
+        "guides/testing.md",
+        "guides/comparison.md",
+        "guides/limitations.md",
         "guides/migration_from_live_react.md",
         "guides/uninstallation.md",
+        "guides/releasing.md",
         "CHANGELOG.md",
         "LICENSE.md",
         "THIRD_PARTY_NOTICES.md",
         "UPSTREAM.md"
+      ]
+    ]
+  end
+
+  defp aliases do
+    [
+      quality: [
+        "format --check-formatted",
+        "compile --force --warnings-as-errors",
+        "credo --strict",
+        "test"
       ]
     ]
   end

@@ -20,12 +20,36 @@ env:
 
 jobs:
   beam:
-    name: Elixir 1.20.4 / OTP 29.0.5
+    name: >-
+      BEAM ${{ matrix.profile }} /
+      Elixir ${{ matrix.elixir }} /
+      OTP ${{ matrix.otp }} /
+      Phoenix ${{ matrix.phoenix_requirement }} /
+      LiveView ${{ matrix.live_view_requirement }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: minimum
+            elixir: 1.20.0
+            otp: 27.3.4.10
+            phoenix_requirement: "== 1.8.0"
+            live_view_requirement: "== 1.2.11"
+          - profile: latest
+            elixir: 1.20.4
+            otp: 29.0.5
+            phoenix_requirement: "~> 1.8"
+            live_view_requirement: "~> 1.2.11"
+    env:
+      LIVEVIEW_REACT_CI_PHOENIX_REQUIREMENT: ${{ matrix.phoenix_requirement }}
+      LIVEVIEW_REACT_CI_LIVE_VIEW_REQUIREMENT: ${{ matrix.live_view_requirement }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Reject legacy implementation names
         run: .github/scripts/check-clean-break.sh
@@ -33,21 +57,21 @@ jobs:
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
-          elixir-version: 1.20.4
-          otp-version: 29.0.5
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
 
-      - name: Restore Mix cache
+      - name: Unlock compatibility dependencies
+        run: mix deps.unlock --all
+
+      - name: Resolve ${{ matrix.profile }} compatibility dependencies
+        run: mix deps.get
+
+      - name: Restore Dialyzer PLT cache
+        if: matrix.profile == 'latest'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            deps
-            _build
-          key: mix-${{ runner.os }}-otp-29.0.5-elixir-1.20.4-${{ hashFiles('mix.lock') }}
-          restore-keys: |
-            mix-${{ runner.os }}-otp-29.0.5-elixir-1.20.4-
-
-      - name: Install dependencies
-        run: mix deps.get
+          path: _build/test/*.plt*
+          key: dialyzer-${{ runner.os }}-otp-${{ matrix.otp }}-elixir-${{ matrix.elixir }}-${{ hashFiles('mix.lock') }}
 
       - name: Check unused dependencies
         run: mix deps.unlock --check-unused
@@ -62,24 +86,48 @@ jobs:
         run: mix compile --force --warnings-as-errors
 
       - name: Run Credo
-        run: mix credo
+        run: mix credo --strict
 
       - name: Run ExUnit
         run: mix test
 
+      - name: Run Dialyzer
+        if: matrix.profile == 'latest'
+        run: mix dialyzer --format github
+
   javascript:
-    name: Node ${{ matrix.node }}
+    name: >-
+      JavaScript ${{ matrix.profile }} /
+      Node ${{ matrix.node }} /
+      React ${{ matrix.react }} /
+      Types ${{ matrix.react_types }}/${{ matrix.react_dom_types }} /
+      TypeScript ${{ matrix.typescript }} /
+      Vite ${{ matrix.vite }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        node:
-          - 24.20.0
-          - 26.8.1
+        include:
+          - profile: minimum
+            node: 24.20.0
+            react: 19.0.0
+            react_types: 19.0.14
+            react_dom_types: 19.0.6
+            typescript: 7.0.2
+            vite: 8.0.0
+          - profile: latest
+            node: 26.8.1
+            react: 19.2.8
+            react_types: 19.2.18
+            react_dom_types: 19.2.5
+            typescript: 7.0.2
+            vite: 8.2.2
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -90,13 +138,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Resolve minimum JavaScript compatibility dependencies
+        if: matrix.profile == 'minimum'
+        run: >-
+          npm install
+          --no-save
+          --package-lock=false
+          --ignore-scripts
+          --no-audit
+          --no-fund
+          react@19.0.0
+          react-dom@19.0.0
+          @types/react@19.0.14
+          @types/react-dom@19.0.6
+          typescript@7.0.2
+          vite@8.0.0
+
+      - name: Verify resolved JavaScript compatibility versions
+        run: >-
+          node .github/scripts/check-javascript-versions.mjs
+          ${{ matrix.react }}
+          ${{ matrix.react_types }}
+          ${{ matrix.react_dom_types }}
+          ${{ matrix.typescript }}
+          ${{ matrix.vite }}
+
       - name: Check formatting
         run: npm run format:check
+
+      - name: Lint JavaScript sources
+        run: npm run lint
 
       - name: Check types
         run: npm run typecheck
 
-      - name: Run Vitest
+      - name: Run JavaScript unit, property, and stress tests
         run: npm test
 
       - name: Build package
@@ -117,6 +193,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -148,6 +226,9 @@ jobs:
       - name: Check Hex package artifact
         run: .github/scripts/check-hex-package.sh
 
+      - name: Build API documentation without warnings
+        run: mix docs --warnings-as-errors --output "$RUNNER_TEMP/docs"
+
   example:
     name: Example / Node ${{ matrix.node }}
     runs-on: ubuntu-latest
@@ -164,6 +245,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -236,7 +319,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: npx playwright install --with-deps chromium
 
-      - name: Run browser lifecycle tests
+      - name: Run real Phoenix browser E2E
         if: matrix.node == '24.20.0'
         working-directory: ${{ github.workspace }}
         run: npm run test:e2e

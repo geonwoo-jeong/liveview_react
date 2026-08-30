@@ -21,6 +21,7 @@ const CompatRootContext = createContext("missing-root-context");
 const lazyModule = Object.freeze({ default: CompatLazyReady });
 
 let nextInstanceNumber = 0;
+let nextMemoRenderNumber = 0;
 let releaseLazyModule;
 let lazyModuleResolved = false;
 
@@ -33,6 +34,11 @@ const CompatLazy = lazy(() => lazyModulePromise);
 function allocateInstanceId() {
   nextInstanceNumber += 1;
   return `compat-instance-${nextInstanceNumber}`;
+}
+
+function allocateMemoRenderNumber() {
+  nextMemoRenderNumber += 1;
+  return nextMemoRenderNumber;
 }
 
 async function resolveSuspense() {
@@ -59,11 +65,10 @@ function CompatLazyReady() {
 }
 
 const CompatMemoProbe = memo(function CompatMemoProbe() {
-  const renderCount = useRef(0);
-  renderCount.current += 1;
-
   return (
-    <output data-testid="compat-memo-renders">{renderCount.current}</output>
+    <output data-testid="compat-memo-renders">
+      {allocateMemoRenderNumber()}
+    </output>
   );
 });
 
@@ -227,7 +232,7 @@ export function E2EReactCompatProbe({ serverVersion }) {
   const generatedId = useId();
   const rootContext = useContext(CompatRootContext);
   const focusableInputRef = useRef(null);
-  const [instanceId, setInstanceId] = useState("pending");
+  const [instanceId] = useState(allocateInstanceId);
   const [controlledValue, setControlledValue] = useState("");
   const [transitionValue, setTransitionValue] = useState(0);
   const [isTransitionPending, startTransition] = useTransition();
@@ -235,10 +240,6 @@ export function E2EReactCompatProbe({ serverVersion }) {
   const [richHtml, setRichHtml] = useState("<p>editable</p>");
   const [sliderValue, setSliderValue] = useState(25);
   const [portalBubbles, setPortalBubbles] = useState(0);
-
-  useEffect(() => {
-    setInstanceId(allocateInstanceId());
-  }, []);
 
   const portalHost = document.getElementById("compat-portal-host");
 

@@ -1,5 +1,5 @@
 # This module is compiled only when the example application's E2E suite is explicitly enabled.
-defmodule LiveViewReactExamplesWeb.LiveReactCompatE2E do
+defmodule LiveViewReactExamplesWeb.ReactCompatE2E do
   @moduledoc false
 
   use LiveViewReactExamplesWeb, :live_view

@@ -11,14 +11,9 @@
     "types": ["node"]
   },
   "include": [
-    "assets/js/liveview_react/**/*.ts",
-    "assets/js/liveview_react/**/*.tsx"
+    "assets/js/liveview_react/index.ts",
+    "assets/js/liveview_react/server.tsx",
+    "assets/js/liveview_react/vite.ts"
   ],
-  "exclude": [
-    "assets/js/liveview_react/**/*.test.ts",
-    "assets/js/liveview_react/**/*.test.tsx",
-    "assets/js/liveview_react/tests",
-    "dist",
-    "node_modules"
-  ]
+  "exclude": ["dist", "node_modules"]
 }
