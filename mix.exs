@@ -2,11 +2,14 @@ defmodule LiveViewReact.MixProject do
   use Mix.Project
 
   @version "0.1.0"
+  @source_url "https://github.com/geonwoo-jeong/liveview_react"
 
   def project do
     [
       app: :liveview_react,
       version: @version,
+      source_url: @source_url,
+      homepage_url: @source_url,
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :test,
