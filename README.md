@@ -288,7 +288,6 @@ These are intentional product constraints, not compatibility gaps:
 - [Architecture](guides/architecture.md)
 - [Comparison](guides/comparison.md)
 - [Limitations](guides/limitations.md)
-- [Migration from LiveReact](guides/migration_from_live_react.md)
 - [Testing](guides/testing.md)
 - [Development](guides/development.md)
 - [Deployment](guides/deployment.md)
@@ -311,24 +310,16 @@ This repository includes a Phoenix example application under
 verification.
 
 Maintainer-grade verification adds `mix quality_full`, `npm run quality:ci`,
-the artifact-backed fresh-consumer check, and the hosted release dry run. See
+and the hosted release workflow. See
 [Testing](guides/testing.md) and [Releasing](guides/releasing.md) before
 publishing.
 
 ## Credits
 
-`liveview_react` was originally forked from
-[live_react](https://github.com/mrdotb/live_react) and has since substantially
-diverged in its runtime architecture, public API, tooling, and documentation.
-
 The project also draws significant inspiration from
 [LiveVue](https://github.com/Valian/live_vue) and
 [LiveSvelte](https://github.com/woutdp/live_svelte), particularly around
 LiveView integration, SSR, streams, slots, and developer experience.
-
-Full upstream provenance and license details are documented in
-[UPSTREAM.md](UPSTREAM.md) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 

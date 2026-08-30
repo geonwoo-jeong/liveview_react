@@ -194,7 +194,6 @@ dependency, a `NodeJS.Supervisor`, and the matching
 `LiveViewReact.SSR.NodeJS` configuration. See [Server-side rendering](ssr.md)
 and [Deployment](deployment.md).
 
-For a clean-break migration from the old `live_react` project, follow
-[Migration from LiveReact](migration_from_live_react.md). To remove this
-integration while preserving unrelated PhoenixVite configuration, follow
+To remove this integration while preserving unrelated PhoenixVite
+configuration, follow
 [Uninstallation](uninstallation.md).

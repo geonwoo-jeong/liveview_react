@@ -48,8 +48,3 @@ LiveVue and LiveSvelte apply a similar server-owned-page idea to different
 frontend runtimes. Choose the bridge that matches the component ecosystem and
 team expertise. Their component registries, SSR tools, slot semantics, and
 state APIs are not compatibility contracts for LiveViewReact.
-
-Older LiveReact applications must perform the explicit clean-break migration
-described in [Migration from LiveReact](migration_from_live_react.md).
-LiveViewReact provides no old package names, hook aliases, or configuration
-fallbacks.

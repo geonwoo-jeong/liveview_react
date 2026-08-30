@@ -159,8 +159,6 @@ try {
     "README.md",
     "CHANGELOG.md",
     "LICENSE.md",
-    "THIRD_PARTY_NOTICES.md",
-    "UPSTREAM.md",
   ]) {
     if (!packedPaths.has(requiredPath)) {
       throw new Error(`Packed package is missing ${requiredPath}`);

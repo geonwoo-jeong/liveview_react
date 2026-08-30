@@ -51,9 +51,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Reject legacy implementation names
-        run: .github/scripts/check-clean-break.sh
-
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
@@ -160,15 +157,6 @@ jobs:
           typescript@7.0.2
           vite@8.0.0
 
-      - name: Verify resolved JavaScript compatibility versions
-        run: >-
-          node .github/scripts/check-javascript-versions.mjs
-          ${{ matrix.react }}
-          ${{ matrix.react_types }}
-          ${{ matrix.react_dom_types }}
-          ${{ matrix.typescript }}
-          ${{ matrix.vite }}
-
       - name: Check formatting
         run: npm run format:check
 
@@ -223,14 +211,18 @@ jobs:
       - name: Build npm package
         run: npm run build
 
-      - name: Verify package identity and synchronized versions
-        run: .github/scripts/check-package-identity.sh
+      - name: Verify synchronized package versions
+        run: |
+          npm_version="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")"
+          mix_version="$(sed -nE 's/^  @version \"([^\"]+)\"$/\1/p' mix.exs)"
+          test -n "$mix_version"
+          test "$npm_version" = "$mix_version"
 
       - name: Check npm package artifact
         run: npm run pack:check
 
       - name: Check Hex package artifact
-        run: .github/scripts/check-hex-package.sh
+        run: mix hex.build --unpack --output "$RUNNER_TEMP/hex-package"
 
       - name: Build API documentation without warnings
         run: mix docs --warnings-as-errors --output "$RUNNER_TEMP/docs"

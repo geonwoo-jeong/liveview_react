@@ -39,20 +39,17 @@ compatibility promise between different release lines.
 From the repository root:
 
 ```sh
-npm run release:check
+mix deps.get
+mix quality_full
+npm ci
+npm run quality:ci
 npm publish --dry-run --access public --ignore-scripts
 ```
 
-The script installs locked dependencies; checks the clean-break boundary,
-formatting, warnings, Credo, ExUnit, JavaScript formatting/lint/types/tests;
-then runs both artifact checks. `check-package-identity.sh` verifies both public
-names are `liveview_react`, the Mix and npm versions match, and the installer
-generates the matching npm dependency requirement. `pack:check`
-builds the package, checks the npm file list and exact runtime export map, and
-compiles a temporary consumer. `check-hex-package.sh` unpacks a temporary Hex
-artifact and verifies its required BEAM, npm, documentation, license, and
-provenance files. The final command exercises npm's publish path without
-running the prepack script again or publishing to the registry.
+These commands install locked dependencies; run formatting, warnings, Credo,
+ExUnit, Dialyzer, JavaScript formatting/lint/types/tests, package assembly, and
+dependency audits; and then exercise npm's publish path without publishing to
+the registry.
 
 Inspect the two dry-run file lists. Generated npm source maps, private test
 fixtures, credentials, dependency trees, and development-only sources must not
@@ -65,18 +62,14 @@ create the exact annotated tag `v<version>` on the release commit. Do not move a
 published version tag.
 
 Run the `Release` workflow with `publish` left false first. Its `dry-run` job
-repeats compile, lint, ExUnit, Vitest, package identity, Hex unpacking, npm
-consumer checks, and `npm publish --dry-run`. One required job builds the
+repeats compile, lint, ExUnit, Vitest, package assembly, and
+`npm publish --dry-run`. One required job builds the
 example's production browser and SSR bundles, then separately runs the real
 Phoenix Chromium suite with the instrumented test endpoint and Vite development
 server against the repository-built runtime. This proves both production
 bundles compile and the browser lifecycle suite passes; it does not serve the
-built production browser bundle to Chromium. Another job creates a new
-application with a pinned `phx_new`, runs the public Igniter installer from the
-unpacked Hex artifact, installs the npm tarball as a normal package directory,
-and verifies the generated application's tests, TypeScript, production browser
-build, SSR build, and a real SSR render. Resolve every failure in a new commit
-and version/tag; never bypass a failed check.
+built production browser bundle to Chromium. Resolve every failure in a new
+commit and version/tag; never bypass a failed check.
 
 ## Publish
 
@@ -86,16 +79,13 @@ release job verifies:
 
 - the workflow ref equals the synchronized `v<version>` tag;
 - the current repository matches `LIVEVIEW_REACT_RELEASE_REPOSITORY`;
-- the artifact dry-run, example-build/browser, and fresh-consumer jobs
-  all passed;
-- both package identities and artifacts still match; and
-- whether that version already exists on Hex or npm.
+- the artifact dry-run and example-build/browser jobs both passed; and
+- the package metadata matches the selected tag.
 
 The job publishes Hex first and npm second. Registry publication is not
 atomic. If one succeeds and the other fails, do not change the version or
 overwrite the published artifact. Correct the external failure and rerun the
-same tagged workflow: the registry-state check skips the existing artifact and
-publishes only the missing one.
+same tagged workflow.
 
 After success, verify the version and README on both registries, install it in
 a fresh Phoenix application, run the generated demo, and confirm browser and

@@ -68,10 +68,3 @@ jobs:
         env:
           LIVEVIEW_REACT_REQUIRE_LAZY_SPLIT: "true"
         run: npm run benchmark 2>&1 | tee "$RUNNER_TEMP/javascript-benchmark.txt"
-
-      - name: Write benchmark summary
-        if: always()
-        run: >-
-          .github/scripts/write-benchmark-summary.sh
-          "$RUNNER_TEMP/elixir-benchmark.txt"
-          "$RUNNER_TEMP/javascript-benchmark.txt"

@@ -73,18 +73,6 @@ forms/uploads, slots, reconnect, and package behavior. TypeScript strict checks
 and the temporary packed-package consumer verify the public types and exact
 runtime exports.
 
-The release-only fresh-consumer lane goes beyond the in-memory Igniter fixture
-and repository-linked example. It generates a new Phoenix application, installs
-the unpacked Hex artifact through the public Igniter task, injects the packed
-npm tarball at the install boundary, rejects source-repository references and
-npm symlinks, then runs the generated tests, TypeScript check, production
-browser build, SSR build, and SSR renderer. Reproduce that lane after installing
-the pinned `phx_new` and `igniter_new` archives:
-
-```sh
-.github/scripts/check-fresh-consumer.sh
-```
-
 ## Server lifecycle tests
 
 `test/live_view_react_lifecycle_test.exs` mounts real LiveViews over a real
@@ -127,9 +115,7 @@ Error Boundaries, root error callbacks, and cleanup.
 This suite uses an instrumented Vite development server and Phoenix test
 endpoint. Release verification builds the production browser and SSR bundles
 before running it, but the current Chromium lane does not serve the built
-production browser artifact. The fresh-consumer lane independently verifies
-that a generated application's production browser bundle is emitted and its SSR
-bundle renders.
+production browser artifact to the browser run.
 
 React-specific checks explicitly assert provider locality per root, portal
 ownership and synthetic bubbling, `useId()` hydration stability, `memo` and
@@ -166,8 +152,8 @@ React, ReactDOM, TypeScript, and Vite versions without saving them and verifies
 the resolved versions before testing. The real Chromium E2E suite runs on Node
 24 to avoid duplicating identical browser coverage.
 
-React 18, Phoenix 1.7, LiveView 0.x, CommonJS, and old package or namespace
-surfaces are not compatibility targets. See [Limitations](limitations.md).
+React 18, Phoenix 1.7, LiveView 0.x, and CommonJS are not compatibility
+targets. See [Limitations](limitations.md).
 
 These floors are not all asserted as technical minima. React 19 is required by
 the public root callback APIs used by this package. Phoenix LiveView 1.2.11 is
@@ -204,35 +190,10 @@ tagged lazy loader. When example production assets exist, it also requires the
 Build the example client assets first when running locally if the lazy split
 must be included; otherwise that artifact-only report is explicitly skipped.
 The manually dispatched `Benchmarks` workflow always performs the build and
-records both raw reports in the job summary. Numbers vary by machine, runtime
-warmup, and garbage collector, so there is no numeric regression threshold;
-semantic invariants still fail.
+captures the raw benchmark logs. Numbers vary by machine, runtime warmup, and
+garbage collector, so there is no numeric regression threshold; semantic
+invariants still fail.
 
-For cross-version comparison against upstream `live_react`, use the temp-only
-comparison harness instead of the shared worktree. It snapshots the current
-repository, exports the pinned upstream GitHub commits, downloads the pinned
-published npm tarball, and records machine-readable JSON plus a Markdown
-summary:
-
-```sh
-npm run bench:upstream:prepare
-npm run bench:upstream:run
-```
-
-The prepare step is the only networked step. It writes under the platform
-temporary directory (`$TMPDIR/liveview-react-upstream-comparison` on macOS) by
-default, builds only the temporary current snapshot, and never touches the
-shared repository `dist/` directory. The offline run step fails closed if the
-prepared manifest is missing or the pinned target revisions are absent.
-
-The JSON report captures the local environment, warmup/sample counts,
+The benchmark outputs capture the local environment, warmup/sample counts,
 per-sample timings, mean, standard deviation, variance, percentile summaries,
-package size, the public client entry's transitive static module-graph bytes and
-file count, and explicit `N/A` reasons for unsupported surfaces. Package and
-client-graph measurements are captured from pristine packed/downloaded
-artifacts before any temp-only compatibility rewriting. Comparable cases cover
-mount, hydration, prop update, multi-root lifecycle, destroy/remount, SSR, and
-stream transport when the shipped client supports it. Target adapters also
-measure the event bridge, listener balance, and forced-GC heap delta when those
-shipped surfaces can be normalized; otherwise the report records an explicit
-`N/A` instead of inventing comparability.
+package size, and explicit `N/A` reasons for unsupported surfaces.

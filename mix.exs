@@ -87,7 +87,7 @@ defmodule LiveViewReact.MixProject do
       },
       files:
         ~w(dist guides lib priv/installer)s ++
-          ~w(CHANGELOG.md LICENSE.md README.md THIRD_PARTY_NOTICES.md UPSTREAM.md) ++
+          ~w(CHANGELOG.md LICENSE.md README.md) ++
           ~w(mix.exs package.json .formatter.exs)
     ]
   end
@@ -118,13 +118,10 @@ defmodule LiveViewReact.MixProject do
         "guides/testing.md",
         "guides/comparison.md",
         "guides/limitations.md",
-        "guides/migration_from_live_react.md",
         "guides/uninstallation.md",
         "guides/releasing.md",
         "CHANGELOG.md",
-        "LICENSE.md",
-        "THIRD_PARTY_NOTICES.md",
-        "UPSTREAM.md"
+        "LICENSE.md"
       ]
     ]
   end

@@ -115,9 +115,8 @@ compatibility modes.
 
 The initial release targets Phoenix 1.8+, Phoenix LiveView 1.2.11+, React and
 ReactDOM 19.x, TypeScript 7.x, Vite 8.x, and Node.js 24+. It intentionally has
-no Phoenix 1.7, LiveView 0.x, React 18, CommonJS, old LiveReact namespace, or
-deprecated API compatibility layer. See [Testing](testing.md) for the exact CI
-matrix.
+no Phoenix 1.7, LiveView 0.x, React 18, CommonJS, or deprecated API
+compatibility layer. See [Testing](testing.md) for the exact CI matrix.
 
 The real-browser contract is currently Chromium only. Firefox and WebKit may
 work through the same standards-based APIs, but they are not supported claims
