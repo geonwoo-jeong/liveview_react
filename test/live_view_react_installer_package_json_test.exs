@@ -27,7 +27,7 @@ defmodule LiveViewReact.Installer.PackageJSONTest do
     assert package["devDependencies"]["@vitejs/plugin-react"] == "^6.0.0"
     assert package["devDependencies"]["@types/react"] == "^19.0.0"
     assert package["devDependencies"]["@types/react-dom"] == "^19.0.0"
-    assert package["devDependencies"]["typescript"] == "^7.0.0"
+    assert package["devDependencies"]["typescript"] == "^7.0.2"
     assert package["devDependencies"]["custom-tool"] == "^3.0.0"
     assert package["scripts"]["lint"] == "eslint ."
     assert package["scripts"]["typecheck"] == "tsc --noEmit"
