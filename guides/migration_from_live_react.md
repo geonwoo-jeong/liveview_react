@@ -148,9 +148,10 @@ keep an old server-only component map. Development SSR uses
 `LiveViewReact.SSR.ViteJS`, while production SSR uses
 `LiveViewReact.SSR.NodeJS` and the separately built ESM server entry.
 
-Pass `Phoenix.LiveView.LiveStream` values directly as props and use the
-transported `__dom_id` as the React key. Do not adapt the old compact patch
-payload in application code.
+Pass Phoenix LiveView
+[LiveStream struct](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.LiveStream.html)
+values directly as props and use the transported `__dom_id` as the React key.
+Do not adapt the old compact patch payload in application code.
 
 HEEx slots become inert React nodes. They cannot contain forms, `phx-*` or
 `data-phx-*` bindings, hooks, LiveComponents, or nested LiveViewReact roots.

@@ -17,6 +17,19 @@ React-specific libraries, or substantial client-local interaction. Use a SPA
 or Inertia-style architecture when the browser should own routing and remote
 data fetching for the whole application.
 
+## State ownership
+
+Keep persisted data, authorization decisions, navigation, validation results,
+and other authoritative state in LiveView. Pass it into React as props. Keep
+drafts, focus, open/closed UI, animation, and third-party widget state local to
+the React root.
+
+A server prop update rerenders the existing root and preserves local React
+state. Removing the `<.react>` element or replacing its stable `id` or
+`component` is a remount boundary. If two widgets need one client-side Context
+or state owner, render them under one `<.react>` tree; separate roots do not
+share Context automatically.
+
 ## Installation
 
 Install the Hex package, matching npm package, PhoenixVite integration,
@@ -76,23 +89,29 @@ Inside the React tree, `useLiveReact()` exposes the existing LiveView hook
 bridge:
 
 ```tsx
+import { useState } from "react";
 import { useLiveReact } from "liveview_react";
 
 export default function Counter({ count }: { count: number }) {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { pushEvent } = useLiveReact();
 
   async function increment() {
+    setErrorMessage(null);
     try {
       await pushEvent("increment", { by: 1 });
-    } catch (error) {
-      console.error("Could not increment the counter", error);
+    } catch {
+      setErrorMessage("Could not increment the counter");
     }
   }
 
   return (
-    <button type="button" onClick={increment}>
-      Count: {count}
-    </button>
+    <>
+      <button type="button" onClick={() => void increment()}>
+        Count: {count}
+      </button>
+      {errorMessage && <p role="alert">{errorMessage}</p>}
+    </>
   );
 }
 ```
@@ -106,11 +125,25 @@ Use `useLiveEvent` for server-pushed events. It keeps the latest handler and
 automatically removes the LiveView subscription when the component unmounts:
 
 ```tsx
+import { useState } from "react";
 import { useLiveEvent } from "liveview_react";
 
-useLiveEvent<{ message: string }>("notification", ({ message }) => {
-  console.info(message);
-});
+type Notification = {
+  readonly id: string;
+  readonly message: string;
+};
+
+function Notifications() {
+  const [notifications, setNotifications] = useState<
+    readonly Notification[]
+  >([]);
+
+  useLiveEvent<Notification>("notification", (notification) => {
+    setNotifications((current) => [...current, notification]);
+  });
+
+  return notifications.map(({ id, message }) => <p key={id}>{message}</p>);
+}
 ```
 
 `useEventReply` adds loading, result, error, cancellation, timeout, and stale
@@ -176,27 +209,41 @@ the same component registry. A server entry point exports an object-shaped
 renderer:
 
 ```tsx
-import components from "./components";
+import components from "virtual:liveview-react/components";
 import { createLiveViewReactServer } from "liveview_react/server";
 
 export const { render } = createLiveViewReactServer({ components });
 ```
 
-See [installation](guides/installation.md),
-[client hooks](guides/client_hooks.md), [events](guides/events.md),
-[forms](guides/forms.md), [uploads](guides/uploads.md),
-[streams](guides/streams.md), [slots](guides/slots.md),
-[SSR](guides/ssr.md), [deployment](guides/deployment.md),
-[migration](guides/migration_from_live_react.md), and
-[uninstallation](guides/uninstallation.md) for the full setup.
+## Guides
+
+- Start with [Getting started](guides/getting_started.md),
+  [Installation](guides/installation.md), and
+  [Component API](guides/component_api.md).
+- Understand the runtime in [Architecture](guides/architecture.md),
+  [Lazy loading](guides/lazy_loading.md),
+  [Comparison](guides/comparison.md), and
+  [Limitations](guides/limitations.md).
+- Build features with [Client hooks](guides/client_hooks.md),
+  [Events](guides/events.md), [Forms](guides/forms.md),
+  [Uploads](guides/uploads.md), [Streams](guides/streams.md), and
+  [Slots](guides/slots.md).
+- Operate the integration with [SSR](guides/ssr.md),
+  [Testing](guides/testing.md), [Development](guides/development.md),
+  [Deployment](guides/deployment.md), and [Releasing](guides/releasing.md).
+- Use [Migration from LiveReact](guides/migration_from_live_react.md) for the
+  clean break or [Uninstallation](guides/uninstallation.md) to remove the
+  integration.
 
 ## Requirements
 
-- Elixir 1.20+
+- Elixir 1.20+ on OTP 27+
 - Phoenix 1.8+
-- Phoenix LiveView ~> 1.2.11
+- Phoenix LiveView 1.2.11+
 - React and ReactDOM 19.x
-- Node.js 24 LTS or 26 current for package development
+- TypeScript 7 for the generated TypeScript setup
+- Vite 8 for the generated asset integration
+- Node.js 24+ for assets and package development
 
 ## Project lineage
 

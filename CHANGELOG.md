@@ -10,6 +10,16 @@
   `LiveViewReactHook`.
 - Standardized SSR on `createLiveViewReactServer()` and the
   `liveview_react/vite` entry point.
+- Added immutable compact props patches, reconnect recovery, Phoenix Streams,
+  and inert HEEx slot transport.
+- Added SSR/hydration identity, lazy component loading, StrictMode, root error
+  callbacks, portals, and React 19 compatibility coverage.
+- Added LiveView events and replies, connection state, navigation, controlled
+  Ecto forms, and Phoenix upload hooks.
+- Added Vite component discovery and an idempotent Igniter installer for fresh
+  Phoenix applications.
+- Added ExUnit, property, Vitest, real-Phoenix Playwright, lifecycle stress,
+  compatibility matrix, artifact, benchmark, and release dry-run workflows.
 - Removed legacy setup tasks, copy templates, reload hooks, fallback IDs, and
   compatibility aliases.
 
