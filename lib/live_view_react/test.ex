@@ -191,32 +191,68 @@ defmodule LiveViewReact.Test do
     end
   end
 
-  defp validate_hydration_descriptor!(
-         %{
-           "version" => 1,
-           "component" => component,
-           "events" => events,
-           "identifierPrefix" => identifier_prefix,
-           "props" => props,
-           "slots" => slots
-         } = descriptor
-       )
-       when map_size(descriptor) == 6 and is_binary(component) and component != "" and
-              is_binary(identifier_prefix) and identifier_prefix != "" and is_map(props) and
-              is_map(slots) and is_map(events) do
-    if valid_string_map?(slots) and valid_event_map?(events) do
-      descriptor
-    else
-      raise "Invalid data-react-hydration descriptor"
-    end
-  end
+  defp validate_hydration_descriptor!(descriptor) do
+    case hydration_descriptor_fields(descriptor) do
+      {:ok, fields} ->
+        validate_hydration_fields!(descriptor, fields)
 
-  defp validate_hydration_descriptor!(_descriptor) do
-    raise "Invalid data-react-hydration descriptor"
+      :error ->
+        raise "Invalid data-react-hydration descriptor"
+    end
   end
 
   defp valid_string_map?(map) do
     Enum.all?(map, fn {name, value} -> is_binary(name) and is_binary(value) end)
+  end
+
+  defp valid_hydration_payload?(slots, events) do
+    valid_string_map?(slots) and valid_event_map?(events)
+  end
+
+  defp hydration_descriptor_fields(descriptor)
+       when is_map(descriptor) and map_size(descriptor) == 6 do
+    with {:ok, 1} <- Map.fetch(descriptor, "version"),
+         {:ok, component} <- Map.fetch(descriptor, "component"),
+         {:ok, events} <- Map.fetch(descriptor, "events"),
+         {:ok, identifier_prefix} <- Map.fetch(descriptor, "identifierPrefix"),
+         {:ok, props} <- Map.fetch(descriptor, "props"),
+         {:ok, slots} <- Map.fetch(descriptor, "slots") do
+      {:ok,
+       %{
+         component: component,
+         events: events,
+         identifier_prefix: identifier_prefix,
+         props: props,
+         slots: slots
+       }}
+    else
+      _other -> :error
+    end
+  end
+
+  defp hydration_descriptor_fields(_descriptor), do: :error
+
+  defp validate_hydration_fields!(
+         descriptor,
+         %{
+           component: component,
+           events: events,
+           identifier_prefix: identifier_prefix,
+           props: props,
+           slots: slots
+         }
+       ) do
+    case valid_hydration_fields?(component, events, identifier_prefix, props, slots) do
+      true -> descriptor
+      false -> raise "Invalid data-react-hydration descriptor"
+    end
+  end
+
+  defp valid_hydration_fields?(component, events, identifier_prefix, props, slots) do
+    is_binary(component) and component != "" and
+      is_binary(identifier_prefix) and identifier_prefix != "" and
+      is_map(props) and is_map(slots) and is_map(events) and
+      valid_hydration_payload?(slots, events)
   end
 
   defp valid_event_map?(map) do

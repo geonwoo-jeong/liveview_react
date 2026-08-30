@@ -219,43 +219,54 @@ defmodule LiveViewReact.Installer.JSONC do
 
   defp tokenize(source, position, acc) do
     byte = :binary.at(source, position)
+    next = next_byte(source, position)
 
-    cond do
-      whitespace?(byte) ->
-        tokenize(source, position + 1, acc)
+    if whitespace?(byte) do
+      tokenize(source, position + 1, acc)
+    else
+      tokenize_token(source, position, acc, byte, next)
+    end
+  end
 
-      byte == ?/ and next_byte(source, position) == ?/ ->
-        tokenize(source, skip_line_comment(source, position + 2), acc)
+  defp tokenize_token(source, position, acc, ?/, ?/),
+    do: tokenize(source, skip_line_comment(source, position + 2), acc)
 
-      byte == ?/ and next_byte(source, position) == ?* ->
-        case skip_block_comment(source, position + 2) do
-          {:ok, next} -> tokenize(source, next, acc)
-          :error -> {:error, "JSONC contains an unterminated block comment"}
-        end
+  defp tokenize_token(source, position, acc, ?/, ?*) do
+    case skip_block_comment(source, position + 2) do
+      {:ok, next_position} -> tokenize(source, next_position, acc)
+      :error -> {:error, "JSONC contains an unterminated block comment"}
+    end
+  end
 
-      byte == ?" ->
-        with {:ok, stop} <- scan_string(source, position + 1),
-             raw = binary_part(source, position, stop - position),
-             {:ok, value} <- Jason.decode(raw) do
-          tokenize(source, stop, [{:string, value, position, stop} | acc])
-        else
-          _ -> {:error, "JSONC contains an invalid string at byte #{position}"}
-        end
+  defp tokenize_token(source, position, acc, ?", _next),
+    do: tokenize_string(source, position, acc)
 
-      byte in [?{, ?}, ?[, ?], ?:, ?,] ->
-        tokenize(source, position + 1, [{:punct, byte, position, position + 1} | acc])
+  defp tokenize_token(source, position, acc, byte, _next) when byte in [?{, ?}, ?[, ?], ?:, ?,],
+    do: tokenize(source, position + 1, [{:punct, byte, position, position + 1} | acc])
 
-      true ->
-        stop = scan_literal(source, position)
-        raw = binary_part(source, position, stop - position)
+  defp tokenize_token(source, position, acc, _byte, _next),
+    do: tokenize_literal(source, position, acc)
 
-        case Jason.decode(raw) do
-          {:ok, value} ->
-            tokenize(source, stop, [{:literal, value, position, stop} | acc])
+  defp tokenize_string(source, position, acc) do
+    with {:ok, stop} <- scan_string(source, position + 1),
+         raw = binary_part(source, position, stop - position),
+         {:ok, value} <- Jason.decode(raw) do
+      tokenize(source, stop, [{:string, value, position, stop} | acc])
+    else
+      _ -> {:error, "JSONC contains an invalid string at byte #{position}"}
+    end
+  end
 
-          _ ->
-            {:error, "JSONC contains an invalid value at byte #{position}"}
-        end
+  defp tokenize_literal(source, position, acc) do
+    stop = scan_literal(source, position)
+    raw = binary_part(source, position, stop - position)
+
+    case Jason.decode(raw) do
+      {:ok, value} ->
+        tokenize(source, stop, [{:literal, value, position, stop} | acc])
+
+      _ ->
+        {:error, "JSONC contains an invalid value at byte #{position}"}
     end
   end
 

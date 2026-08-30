@@ -2,13 +2,13 @@ defmodule LiveViewReact.SSRTest do
   use ExUnit.Case, async: false
 
   alias LiveViewReact.SSR
+  alias LiveViewReact.SSR.NodeJS
   alias LiveViewReact.SSR.ViteJS
 
   @config_keys [:ssr_module, :vite_host, :vite_connect_timeout, :vite_request_timeout]
 
   test "NodeJS server path resolves the explicitly selected application priv directory" do
-    assert LiveViewReact.SSR.NodeJS.server_path(:liveview_react) ==
-             Application.app_dir(:liveview_react, "priv")
+    assert NodeJS.server_path(:liveview_react) == Application.app_dir(:liveview_react, "priv")
   end
 
   defmodule Renderer do
@@ -120,22 +120,19 @@ defmodule LiveViewReact.SSRTest do
 
   test "rejects requests without the deterministic identifier prefix" do
     Application.put_env(:liveview_react, :ssr_module, Renderer)
+    invalid_request = render_request() |> Map.delete(:identifierPrefix)
 
     assert_raise SSR.RenderError, ~r/Invalid SSR render request/, fn ->
-      SSR.render(%{component: "Counter", events: %{}, props: %{}, slots: %{}})
+      render_unchecked(invalid_request)
     end
   end
 
   test "rejects requests without the dedicated event metadata field" do
     Application.put_env(:liveview_react, :ssr_module, Renderer)
+    invalid_request = render_request() |> Map.delete(:events)
 
     assert_raise SSR.RenderError, ~r/expected component, events, identifierPrefix/, fn ->
-      SSR.render(%{
-        component: "Counter",
-        identifierPrefix: "liveview-react-counter-",
-        props: %{},
-        slots: %{}
-      })
+      render_unchecked(invalid_request)
     end
   end
 
@@ -197,6 +194,11 @@ defmodule LiveViewReact.SSRTest do
       },
       overrides
     )
+  end
+
+  defp render_unchecked(request) do
+    renderer = Function.capture(SSR, :render, 1)
+    renderer.(request)
   end
 
   defp start_hanging_server do

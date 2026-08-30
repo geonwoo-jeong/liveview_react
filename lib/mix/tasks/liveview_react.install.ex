@@ -30,6 +30,8 @@ defmodule Mix.Tasks.LiveviewReact.Install do
   with_igniter do
     use Igniter.Mix.Task
 
+    alias LiveViewReact.Installer.JavaScript
+
     @phoenix_vite_dep {:phoenix_vite, "~> 0.5"}
     @vite_config_path "assets/vite.config.mjs"
     @bun_schema [bun: :boolean]
@@ -99,13 +101,13 @@ defmodule Mix.Tasks.LiveviewReact.Install do
 
     defp phoenix_vite_plugin_configured?(source) do
       with {:ok, ^source} <-
-             LiveViewReact.Installer.JavaScript.ensure_import(
+             JavaScript.ensure_import(
                source,
                ~s(import { phoenixVitePlugin } from "phoenix_vite";),
                "phoenix_vite"
              ),
            {:ok, configured?} <-
-             LiveViewReact.Installer.JavaScript.vite_plugin_present?(source, "phoenixVitePlugin") do
+             JavaScript.vite_plugin_present?(source, "phoenixVitePlugin") do
         configured?
       else
         _missing_or_invalid -> false
