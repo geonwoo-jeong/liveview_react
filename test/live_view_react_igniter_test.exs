@@ -112,7 +112,7 @@ defmodule LiveViewReact.IgniterTest do
              Templates.ssr_vite_config()
 
     package = installed |> source("assets/package.json") |> Jason.decode!()
-    assert package["dependencies"]["liveview_react"] == "^0.1.0"
+    assert_local_liveview_react_dependency(package["dependencies"]["liveview_react"])
     assert package["devDependencies"]["vite"] == "^8.0.0"
     assert package["devDependencies"]["@types/react"] == "^19.0.0"
 
@@ -126,6 +126,7 @@ defmodule LiveViewReact.IgniterTest do
     assert vite =~ "react()"
     assert vite =~ "liveViewReactPlugin"
     assert vite =~ "tailwindcss()"
+    assert vite =~ ~s(dedupe: ["react", "react-dom"])
 
     web = source(installed, "lib/demo_web.ex")
     assert count(web, "import LiveViewReact") == 1
@@ -163,6 +164,23 @@ defmodule LiveViewReact.IgniterTest do
     refute Igniter.exists?(installed, "lib/demo_web/live/live_view_react_demo_live.ex")
     refute source(installed, "lib/demo_web/router.ex") =~ "/liveview-react"
     refute Enum.any?(installed.notices, &String.contains?(&1, "demo is available"))
+  end
+
+  test "does not partially rewrite a Vite config with dynamic resolve settings" do
+    project =
+      phoenix_vite_project()
+      |> replace(
+        "assets/vite.config.mjs",
+        "resolve: {",
+        "resolve: makeResolve(),\n  legacyResolve: {"
+      )
+
+    original = source(project, "assets/vite.config.mjs")
+    installed = run_installer(project, demo: false)
+
+    assert {:error, issues} = Igniter.Test.apply_igniter(installed)
+    assert Enum.any?(issues, &String.contains?(&1, "direct object literal"))
+    assert source(installed, "assets/vite.config.mjs") == original
   end
 
   test "preserves an incompatible dev SSR configuration and reports an issue" do
@@ -217,6 +235,8 @@ defmodule LiveViewReact.IgniterTest do
 
     assert installed.issues == []
     assert Igniter.exists?(installed, "lib/child_app_web/live/live_view_react_demo_live.ex")
+    package = installed |> source("assets/package.json") |> Jason.decode!()
+    assert_local_liveview_react_dependency(package["dependencies"]["liveview_react"])
     refute Enum.any?(Rewrite.sources(installed.rewrite), &String.starts_with?(&1.path, "apps/"))
   end
 
@@ -328,4 +348,10 @@ defmodule LiveViewReact.IgniterTest do
   end
 
   defp count(source, pattern), do: source |> :binary.matches(pattern) |> length()
+
+  defp assert_local_liveview_react_dependency(dependency) when is_binary(dependency) do
+    assert String.starts_with?(dependency, "file:")
+    assert String.ends_with?(dependency, "/deps/liveview_react")
+    refute dependency =~ ~r/[\^~]\d/
+  end
 end

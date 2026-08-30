@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { build, type Connect, type ViteDevServer } from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,7 @@ import { liveViewReactPlugin } from "./vite";
 
 const VIRTUAL_COMPONENTS_ID = "virtual:liveview-react/components";
 const RESOLVED_VIRTUAL_COMPONENTS_ID = `\0${VIRTUAL_COMPONENTS_ID}`;
+const SOURCE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const temporaryDirectories: string[] = [];
 
 async function temporaryRoot(): Promise<string> {
@@ -158,6 +160,81 @@ describe("Vite virtual component registry", () => {
         root,
       }),
     ).resolves.toBeDefined();
+  });
+
+  it("keeps the Vite entry and its shared chunks free of React runtime imports", async () => {
+    const result = await build({
+      build: {
+        copyPublicDir: false,
+        lib: {
+          entry: {
+            index: join(SOURCE_DIRECTORY, "index.ts"),
+            server: join(SOURCE_DIRECTORY, "server.tsx"),
+            vite: join(SOURCE_DIRECTORY, "vite.ts"),
+          },
+          fileName: (_format, entryName) => `${entryName}.js`,
+          formats: ["es"],
+        },
+        rollupOptions: {
+          external: [
+            /^node:/,
+            /^react(?:\/.*)?$/,
+            /^react-dom(?:\/.*)?$/,
+            /^vite(?:\/.*)?$/,
+          ],
+        },
+        write: false,
+      },
+      configFile: false,
+      logLevel: "silent",
+    });
+
+    if (!Array.isArray(result) && !("output" in result)) {
+      throw new Error("Expected a completed in-memory Vite build");
+    }
+
+    const outputs = Array.isArray(result) ? result : [result];
+    const chunks = outputs.flatMap(({ output }) =>
+      output.filter((artifact) => artifact.type === "chunk"),
+    );
+    const chunksByFileName = new Map(
+      chunks.map((chunk) => [chunk.fileName, chunk]),
+    );
+    const viteEntry = chunks.find(
+      (chunk) => chunk.facadeModuleId === join(SOURCE_DIRECTORY, "vite.ts"),
+    );
+    if (!viteEntry) throw new Error("Expected a Vite entry chunk");
+
+    const reachableChunks = new Map<string, (typeof chunks)[number]>();
+    const pending = [viteEntry];
+    while (pending.length > 0) {
+      const chunk = pending.pop();
+      if (!chunk || reachableChunks.has(chunk.fileName)) continue;
+      reachableChunks.set(chunk.fileName, chunk);
+
+      for (const importedFile of [...chunk.imports, ...chunk.dynamicImports]) {
+        const importedChunk = chunksByFileName.get(
+          importedFile.replace(/^\.\//, ""),
+        );
+        if (importedChunk) pending.push(importedChunk);
+      }
+    }
+
+    const reactRuntimeModule = /^(?:react|react-dom)(?:\/|$)/;
+    const reactRuntimeImport =
+      /(?:from\s*|import\s*)["'](?:react|react-dom)(?:\/[^"']*)?["']/;
+    for (const chunk of reachableChunks.values()) {
+      expect(
+        [...chunk.imports, ...chunk.dynamicImports],
+        `${chunk.fileName} must not import a React runtime module`,
+      ).not.toEqual(
+        expect.arrayContaining([expect.stringMatching(reactRuntimeModule)]),
+      );
+      expect(
+        chunk.code,
+        `${chunk.fileName} must not contain a React runtime import`,
+      ).not.toMatch(reactRuntimeImport);
+    }
   });
 
   it("rejects component directories outside the resolved Vite root", async () => {
@@ -440,9 +517,49 @@ describe("Vite SSR middleware", () => {
       "__dom_id must be a non-empty string",
     ],
     [
-      "a cross-namespace collision",
+      "an ordinary/stream namespace collision",
       renderFrame({ props: { users: [] }, streams: { users: [] } }),
       "as both ordinary prop and stream prop",
+    ],
+    [
+      "an ordinary/event namespace collision",
+      renderFrame({
+        props: { onSelect: "ordinary" },
+        events: { onSelect: [["push", { event: "select" }]] },
+      }),
+      "as both ordinary prop and event callback",
+    ],
+    [
+      "an ordinary/slot namespace collision",
+      renderFrame({
+        props: { header: "ordinary" },
+        slots: { header: "<h1>Slot</h1>" },
+      }),
+      "as both ordinary prop and slot prop",
+    ],
+    [
+      "a stream/event namespace collision",
+      renderFrame({
+        streams: { onSelect: [] },
+        events: { onSelect: [["push", { event: "select" }]] },
+      }),
+      "as both stream prop and event callback",
+    ],
+    [
+      "a stream/slot namespace collision",
+      renderFrame({
+        streams: { header: [] },
+        slots: { header: "<h1>Slot</h1>" },
+      }),
+      "as both stream prop and slot prop",
+    ],
+    [
+      "an event/slot namespace collision",
+      renderFrame({
+        events: { onSelect: [["push", { event: "select" }]] },
+        slots: { onSelect: "<button>Select</button>" },
+      }),
+      "as both event callback and slot prop",
     ],
   ])(
     "returns 400 before loading the renderer for %s",

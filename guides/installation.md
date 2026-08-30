@@ -1,10 +1,12 @@
 # Installation
 
-LiveViewReact is distributed as the `liveview_react` Hex and npm packages. Its
-Igniter installer configures a Phoenix application, PhoenixVite, React,
-TypeScript, development SSR, and a file-based component registry together.
-The BEAM transport and browser runtime share a protocol, so keep the Hex and
-npm packages on the same LiveViewReact release line.
+LiveViewReact is distributed as a Hex package that also contains its browser
+and SSR runtime. Its Igniter installer configures a Phoenix application,
+PhoenixVite, React, TypeScript, development SSR, and a file-based component
+registry together. On the asset side it adds `liveview_react` as a local
+`file:` dependency pointing at `deps/liveview_react`, so the Phoenix app
+consumes the code unpacked by Mix instead of downloading a separate npm
+release.
 
 Use the installer from a clean branch so its PhoenixVite asset-stack changes
 are easy to review.
@@ -74,11 +76,14 @@ LiveViewReact then creates or completes these integration files:
 It also makes scoped changes to:
 
 - `assets/package.json`, preserving unrelated dependencies, scripts, and
-  fields
+  fields while adding `liveview_react` as a local `file:` dependency that
+  targets `deps/liveview_react`
 - `assets/js/app.js`, importing the generated bridge and merging
   `liveViewReact.hooks` into the existing `LiveSocket` hooks
 - `assets/vite.config.mjs`, enabling the React and LiveViewReact plugins and
-  selecting the generated SSR entry point
+  selecting the generated SSR entry point; both generated Vite configs also
+  deduplicate `react` and `react-dom` so the runtime linked from `deps` uses
+  the application's React installation
 - `config/dev.exs`, enabling `LiveViewReact.SSR.ViteJS` at the local Vite host
 - the selected web module's `html_helpers/0`, importing `LiveViewReact`
 - the selected router's browser scope when the demo is enabled
@@ -94,6 +99,12 @@ Running the same install command again with the same options is idempotent. If
 you intentionally customize an installer-owned file, keep that customization
 and resolve any later installer issue explicitly rather than expecting a
 template refresh to replace it.
+
+Hex releases already contain the built `dist/` runtime. If the Mix dependency
+instead points directly at a Git checkout or local path, build that checkout
+with `npm ci && npm run build` before installing the Phoenix application's
+asset dependencies; generated `dist/` files are not committed to this source
+repository.
 
 ## Run the generated demo
 

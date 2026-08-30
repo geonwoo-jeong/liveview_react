@@ -1,5 +1,5 @@
-# Build this image from the repository root so both local liveview_react
-# packages are available:
+# Build this image from the repository root so the local liveview_react
+# package and bundled JS runtime are available:
 #
 #   docker build -f liveview_react_examples/Dockerfile .
 
@@ -33,7 +33,7 @@ WORKDIR /app
 RUN mix local.hex --force \
     && mix local.rebar --force
 
-# Build the local npm package before the example installs its file dependency.
+# Build the local JS package before the example installs its file dependency.
 COPY package.json package-lock.json tsconfig.json tsconfig.build.json vite.config.ts ./
 COPY assets/js/liveview_react assets/js/liveview_react
 RUN npm ci --no-audit --no-fund --loglevel=error \

@@ -65,7 +65,7 @@ Then clean the unused dependency after the application compiles without it:
 mix deps.clean liveview_react --unlock
 ```
 
-With npm, remove the matching public package from the assets directory:
+With npm, remove the local asset dependency from the assets directory:
 
 ```sh
 cd assets

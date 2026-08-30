@@ -175,7 +175,7 @@ and unknown fields are rejected.
 
 ## Public error classes
 
-The main npm entry exports four operational error classes:
+The main `liveview_react` entry exports four operational error classes:
 
 - `LiveEventReplyCancelledError`: a reply was superseded, cancelled, or its
   component unmounted.

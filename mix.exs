@@ -83,8 +83,7 @@ defmodule LiveViewReact.MixProject do
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
-        "Documentation" => "https://hexdocs.pm/liveview_react",
-        "npm" => "https://www.npmjs.com/package/liveview_react"
+        "Documentation" => "https://hexdocs.pm/liveview_react"
       },
       files:
         ~w(dist guides lib priv/installer)s ++

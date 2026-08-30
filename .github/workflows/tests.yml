@@ -181,7 +181,7 @@ jobs:
         run: npm audit --audit-level=high
 
   package:
-    name: Hex and npm package artifacts
+    name: Hex and JS package artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -210,7 +210,7 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Build npm package
+      - name: Build bundled JavaScript runtime
         run: npm run build
 
       - name: Verify synchronized package versions
@@ -220,7 +220,7 @@ jobs:
           test -n "$mix_version"
           test "$npm_version" = "$mix_version"
 
-      - name: Check npm package artifact
+      - name: Check local JavaScript package artifact
         run: npm run pack:check
 
       - name: Check Hex package artifact

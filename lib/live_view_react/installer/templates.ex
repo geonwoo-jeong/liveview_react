@@ -73,6 +73,9 @@ defmodule LiveViewReact.Installer.Templates do
         react(),
         liveViewReactPlugin({ entrypoint: "./js/liveview_react_server.tsx" }),
       ],
+      resolve: {
+        dedupe: ["react", "react-dom"],
+      },
       ssr: {
         noExternal: true,
       },

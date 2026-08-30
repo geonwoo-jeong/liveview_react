@@ -2,6 +2,7 @@
   "name": "liveview_react",
   "version": "0.1.0",
   "description": "A first-class React bridge for Phoenix LiveView",
+  "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -39,9 +40,6 @@
   ],
   "engines": {
     "node": ">=24.0.0"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "allowScripts": {
     "fsevents@2.3.2": true,

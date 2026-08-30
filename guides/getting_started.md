@@ -12,10 +12,11 @@ From the Phoenix application root, run:
 mix igniter.install liveview_react
 ```
 
-The installer adds the matching Hex and npm packages, PhoenixVite, TypeScript,
-the browser and SSR entry points, and a component registry. Use `--bun` for the
-PhoenixVite Bun runner or `--no-demo` to skip the example route. In an umbrella,
-run it from the Phoenix child application.
+The installer adds the Hex package, a local asset dependency pointing at
+`deps/liveview_react`, PhoenixVite, TypeScript, the browser and SSR entry
+points, and a component registry. Use `--bun` for the PhoenixVite Bun runner
+or `--no-demo` to skip the example route. In an umbrella, run it from the
+Phoenix child application.
 
 See [Installation](installation.md) for the exact generated-file contract and
 manual setup notes.

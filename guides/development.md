@@ -20,8 +20,9 @@ package assembly plus a dependency audit. Oxlint runs its TypeScript 7-aware
 semantic rules through `oxlint-tsgolint`.
 
 The example application lives in `liveview_react_examples`. Its npm dependency
-points at the repository root, so build the library package before installing
-or building the example assets.
+points at the repository root, so no separate registry package is involved;
+install the root dependencies before installing or building the example
+assets.
 
 ```sh
 npm ci
@@ -37,7 +38,7 @@ npm run build-server
 ```
 
 Source code lives in `lib/live_view_react*` and
-`assets/js/liveview_react`. Generated npm artifacts live in `dist` and must not
+`assets/js/liveview_react`. Generated JavaScript artifacts live in `dist` and must not
 be edited directly.
 
 ## Focused deterministic checks
@@ -123,5 +124,5 @@ numeric regression threshold; semantic invariants still fail. The manually
 dispatched `Benchmarks` workflow performs the required build and captures both
 raw reports without treating measurements as performance promises.
 
-Before a release, follow the artifact and registry dry-run sequence in
+Before a release, follow the artifact dry-run sequence in
 [Releasing](releasing.md).

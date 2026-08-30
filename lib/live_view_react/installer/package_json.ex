@@ -2,9 +2,8 @@ defmodule LiveViewReact.Installer.PackageJSON do
   @moduledoc false
 
   @phoenix_vite_generated_version "^6.3.0"
-
+  @legacy_npm_release_line {0, 1}
   @dependencies [
-    {"liveview_react", "^0.1.0", {:minor, 0, 1}},
     {"react", "^19.0.0", {:major, 19}},
     {"react-dom", "^19.0.0", {:major, 19}}
   ]
@@ -22,10 +21,13 @@ defmodule LiveViewReact.Installer.PackageJSON do
     "typecheck" => "tsc --noEmit"
   }
 
-  @spec merge(String.t()) :: {:ok, String.t()} | {:error, [String.t()]}
-  def merge(source) when is_binary(source) do
+  @spec merge(String.t(), String.t()) :: {:ok, String.t()} | {:error, [String.t()]}
+  def merge(source, liveview_react_dependency)
+      when is_binary(source) and is_binary(liveview_react_dependency) do
     with {:ok, package} <- decode_object(source),
          {:ok, package} <- require_object_fields(package),
+         {:ok, package} <-
+           merge_required_liveview_react_dependency(package, liveview_react_dependency),
          {:ok, package} <- merge_packages(package, "dependencies", @dependencies),
          {:ok, package} <- merge_packages(package, "devDependencies", @dev_dependencies),
          {:ok, package} <- merge_scripts(package) do
@@ -71,6 +73,17 @@ defmodule LiveViewReact.Installer.PackageJSON do
     end)
   end
 
+  defp merge_required_liveview_react_dependency(package, liveview_react_dependency) do
+    case merge_package(
+           package,
+           "dependencies",
+           {"liveview_react", liveview_react_dependency, {:exact, liveview_react_dependency}}
+         ) do
+      {:ok, package} -> {:ok, package}
+      {:error, message} -> {:error, [message]}
+    end
+  end
+
   defp merge_package(package, preferred_section, {name, desired, compatibility}) do
     package
     |> dependency_locations(name)
@@ -99,6 +112,22 @@ defmodule LiveViewReact.Installer.PackageJSON do
          _compatibility
        ) do
     {:ok, put_dependency(package, section, "vite", "^8.0.0")}
+  end
+
+  defp merge_dependency_locations(
+         [{section, current}],
+         package,
+         _preferred_section,
+         "liveview_react",
+         desired,
+         {:exact, desired}
+       )
+       when is_binary(current) do
+    if legacy_npm_release?(current) do
+      {:ok, put_dependency(package, section, "liveview_react", desired)}
+    else
+      verify_compatible_dependency(package, "liveview_react", desired, {:exact, desired}, current)
+    end
   end
 
   defp merge_dependency_locations(
@@ -188,6 +217,8 @@ defmodule LiveViewReact.Installer.PackageJSON do
     end
   end
 
+  defp compatible?(version, {:exact, expected}), do: String.trim(version) == expected
+
   defp version_floor(version) do
     case Regex.run(~r/^\s*(?:\^|~)?\s*(\d+)(?:\.(\d+|x|\*))?/, version) do
       [matched, major, minor] ->
@@ -233,6 +264,16 @@ defmodule LiveViewReact.Installer.PackageJSON do
 
   defp bounded_to_minor?(version, major) do
     not String.starts_with?(String.trim(version), ">=") and major == 0
+  end
+
+  defp legacy_npm_release?(version) do
+    case version_floor(version) do
+      {:ok, @legacy_npm_release_line} ->
+        bounded_to_minor?(version, elem(@legacy_npm_release_line, 0))
+
+      _other ->
+        false
+    end
   end
 
   defp numeric_part(part) when part in [nil, "x", "*"], do: 0

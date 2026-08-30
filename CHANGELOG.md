@@ -34,6 +34,9 @@
   Ecto forms, and Phoenix upload hooks.
 - Added Vite component discovery and an idempotent Igniter installer for fresh
   Phoenix applications.
+- Made the Hex package the single release artifact. Consumer assets resolve the
+  bundled JavaScript runtime from the local Mix dependency instead of a
+  separately published npm package.
 - Added ExUnit, property, Vitest, real-Phoenix Playwright, lifecycle stress,
   compatibility matrix, artifact, benchmark, and release dry-run workflows.
 - Removed deprecated setup tasks, copy templates, reload hooks, and fallback

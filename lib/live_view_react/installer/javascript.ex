@@ -84,6 +84,24 @@ defmodule LiveViewReact.Installer.JavaScript do
     end
   end
 
+  @doc """
+  Ensures the exported Vite config deduplicates React and ReactDOM.
+
+  Only a direct config object (`export default {...}` or
+  `export default defineConfig({...})`) is updated. Existing `resolve` and
+  `dedupe` values must likewise be direct object and array literals so the
+  installer never guesses how a dynamic configuration behaves.
+  """
+  @spec ensure_vite_react_dedupe(binary()) :: update_result()
+  def ensure_vite_react_dedupe(source) do
+    with :ok <- validate_source(source),
+         {:ok, tokens, pairs} <- scan_source(source),
+         {:ok, config} <- only_vite_config_object(tokens, pairs),
+         {:ok, missing} <- missing_react_dedupe_members(config.tokens) do
+      ensure_missing_react_dedupe_members(source, missing)
+    end
+  end
+
   defp validate_source(source) when is_binary(source) do
     cond do
       not String.valid?(source) ->
@@ -344,6 +362,263 @@ defmodule LiveViewReact.Installer.JavaScript do
         end
     end
   end
+
+  defp only_vite_config_object(tokens, pairs) do
+    configs =
+      tokens
+      |> Enum.with_index()
+      |> Enum.reduce([], &collect_vite_config_object(&1, &2, tokens, pairs))
+      |> Enum.reverse()
+
+    case configs do
+      [config] -> {:ok, config}
+      [] -> {:error, "expected exactly one direct exported Vite config object, found none"}
+      _many -> {:error, "expected exactly one direct exported Vite config object, found multiple"}
+    end
+  end
+
+  defp collect_vite_config_object(
+         {%Token{kind: :identifier, value: "export"}, index},
+         configs,
+         tokens,
+         pairs
+       ) do
+    case vite_config_object_at(tokens, pairs, index) do
+      {:ok, config} -> [config | configs]
+      :error -> configs
+    end
+  end
+
+  defp collect_vite_config_object({_token, _index}, configs, _tokens, _pairs), do: configs
+
+  defp vite_config_object_at(tokens, pairs, index) do
+    case {Enum.at(tokens, index + 1), Enum.at(tokens, index + 2)} do
+      {%Token{kind: :identifier, value: "default"}, %Token{value: "{"}} ->
+        direct_object(tokens, pairs, index + 2)
+
+      {%Token{kind: :identifier, value: "default"},
+       %Token{kind: :identifier, value: "defineConfig"}} ->
+        define_config_object(tokens, pairs, index + 3)
+
+      _other ->
+        :error
+    end
+  end
+
+  defp define_config_object(tokens, pairs, call_open_index) do
+    with %Token{value: "("} <- Enum.at(tokens, call_open_index),
+         %Token{value: "{"} <- Enum.at(tokens, call_open_index + 1),
+         {:ok, call_close_index} <- Map.fetch(pairs, call_open_index),
+         {:ok, object_close_index} <- Map.fetch(pairs, call_open_index + 1),
+         true <- object_close_index + 1 == call_close_index do
+      direct_object(tokens, pairs, call_open_index + 1)
+    else
+      _other -> :error
+    end
+  end
+
+  defp direct_object(tokens, pairs, open_index) do
+    with %Token{value: "{"} = open <- Enum.at(tokens, open_index),
+         {:ok, close_index} <- Map.fetch(pairs, open_index),
+         %Token{value: "}"} = close <- Enum.at(tokens, close_index) do
+      inner = Enum.slice(tokens, open_index + 1, max(close_index - open_index - 1, 0))
+      {:ok, %{open: open, close: close, tokens: inner}}
+    else
+      _other -> :error
+    end
+  end
+
+  defp missing_react_dedupe_members(config_tokens) do
+    with :ok <- reject_object_spreads(config_tokens, "Vite config"),
+         {:ok, resolve_properties} <- named_properties(config_tokens, "resolve") do
+      case resolve_properties do
+        [] ->
+          {:ok, :resolve}
+
+        [%{value: value}] ->
+          missing_react_dedupe_members_from_resolve(value)
+
+        _many ->
+          {:error, "Vite config contains multiple resolve properties"}
+      end
+    end
+  end
+
+  defp missing_react_dedupe_members_from_resolve(value) do
+    with {:ok, resolve_members} <- resolve_members(value),
+         :ok <- reject_object_spreads(resolve_members, "Vite resolve config"),
+         {:ok, dedupe_properties} <- named_properties(resolve_members, "dedupe") do
+      case dedupe_properties do
+        [] -> {:ok, :dedupe}
+        [%{value: value}] -> missing_react_dedupe_array_members(value)
+        _many -> {:error, "Vite resolve config contains multiple dedupe properties"}
+      end
+    end
+  end
+
+  defp missing_react_dedupe_array_members(value) do
+    case value do
+      [%Token{value: "["} | _rest] ->
+        if List.last(value).value == "]" do
+          value
+          |> Enum.slice(1, length(value) - 2)
+          |> validate_react_dedupe_elements()
+        else
+          {:error, "Vite resolve.dedupe property must be a direct array literal"}
+        end
+
+      _other ->
+        {:error, "Vite resolve.dedupe property must be a direct array literal"}
+    end
+  end
+
+  defp validate_react_dedupe_elements(tokens) do
+    with {:ok, raw_elements} <- Scanner.split_top_level(tokens),
+         elements <- Enum.reject(raw_elements, &(&1 == [])),
+         :ok <- require_literal_dedupe_elements(elements),
+         :ok <- reject_duplicate_react_dedupe_members(elements) do
+      existing = MapSet.new(elements, fn [%Token{value: value}] -> value end)
+      {:ok, Enum.reject(["react", "react-dom"], &MapSet.member?(existing, &1))}
+    end
+  end
+
+  defp require_literal_dedupe_elements(elements) do
+    if Enum.all?(elements, &literal_dedupe_element?/1),
+      do: :ok,
+      else: {:error, "Vite resolve.dedupe must contain only unescaped string literals"}
+  end
+
+  defp literal_dedupe_element?([%Token{kind: :string, value: value}]),
+    do: not String.contains?(value, "\\")
+
+  defp literal_dedupe_element?(_element), do: false
+
+  defp reject_object_spreads(tokens, label) do
+    with {:ok, members} <- Scanner.split_top_level(tokens) do
+      if Enum.any?(members, &spread_member?/1),
+        do: {:error, "#{label} must not contain spread properties"},
+        else: :ok
+    end
+  end
+
+  defp spread_member?([%Token{value: "..."} | _expression]), do: true
+  defp spread_member?(_member), do: false
+
+  defp reject_duplicate_react_dedupe_members(elements) do
+    values = Enum.map(elements, fn [%Token{value: value}] -> value end)
+
+    case Enum.find(["react", "react-dom"], &(Enum.count(values, fn value -> value == &1 end) > 1)) do
+      nil -> :ok
+      duplicate -> {:error, "Vite resolve.dedupe contains #{inspect(duplicate)} multiple times"}
+    end
+  end
+
+  defp ensure_missing_react_dedupe_members(source, :resolve) do
+    with {:ok, config} <- vite_config_object(source) do
+      {:ok,
+       Source.insert_collection_member(
+         source,
+         config.open,
+         config.close,
+         config.tokens,
+         ~s(resolve: { dedupe: ["react", "react-dom"] })
+       )}
+    end
+  end
+
+  defp ensure_missing_react_dedupe_members(source, :dedupe) do
+    with {:ok, resolve} <- vite_resolve_object(source) do
+      {:ok,
+       Source.insert_collection_member(
+         source,
+         resolve.open,
+         resolve.close,
+         resolve.tokens,
+         ~s(dedupe: ["react", "react-dom"])
+       )}
+    end
+  end
+
+  defp ensure_missing_react_dedupe_members(source, missing) when is_list(missing) do
+    Enum.reduce_while(missing, {:ok, source}, fn member, {:ok, current} ->
+      case insert_react_dedupe_member(current, member) do
+        {:ok, updated} -> {:cont, {:ok, updated}}
+        {:error, _message} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp insert_react_dedupe_member(source, member) do
+    with {:ok, dedupe} <- vite_dedupe_array(source) do
+      {:ok,
+       Source.insert_collection_member(
+         source,
+         dedupe.open,
+         dedupe.close,
+         dedupe.tokens,
+         inspect(member)
+       )}
+    end
+  end
+
+  defp vite_config_object(source) do
+    case scan_source(source) do
+      {:ok, tokens, pairs} -> only_vite_config_object(tokens, pairs)
+      {:error, _message} = error -> error
+    end
+  end
+
+  defp vite_resolve_object(source) do
+    with {:ok, config} <- vite_config_object(source),
+         {:ok, [%{value: value}]} <- named_properties(config.tokens, "resolve") do
+      object_from_value(value, "Vite resolve property must be a direct object literal")
+    else
+      {:ok, _properties} -> {:error, "expected exactly one Vite resolve property"}
+      {:error, _message} = error -> error
+    end
+  end
+
+  defp vite_dedupe_array(source) do
+    with {:ok, resolve} <- vite_resolve_object(source),
+         {:ok, [%{value: value}]} <- named_properties(resolve.tokens, "dedupe") do
+      array_from_value(value, "Vite resolve.dedupe property must be a direct array literal")
+    else
+      {:ok, _properties} -> {:error, "expected exactly one Vite resolve.dedupe property"}
+      {:error, _message} = error -> error
+    end
+  end
+
+  defp object_from_value(value, message) do
+    if object_literal?(value) do
+      open = List.first(value)
+      close = List.last(value)
+      inner = Enum.slice(value, 1, length(value) - 2)
+      {:ok, %{open: open, close: close, tokens: inner}}
+    else
+      {:error, message}
+    end
+  end
+
+  defp resolve_members(value) do
+    if object_literal?(value) do
+      {:ok, Enum.slice(value, 1, length(value) - 2)}
+    else
+      {:error, "Vite resolve property must be a direct object literal"}
+    end
+  end
+
+  defp array_from_value([%Token{value: "["} | _rest] = value, message) do
+    if List.last(value).value == "]" do
+      open = List.first(value)
+      close = List.last(value)
+      inner = Enum.slice(value, 1, length(value) - 2)
+      {:ok, %{open: open, close: close, tokens: inner}}
+    else
+      {:error, message}
+    end
+  end
+
+  defp array_from_value(_value, message), do: {:error, message}
 
   defp plugins_properties(tokens) do
     tokens

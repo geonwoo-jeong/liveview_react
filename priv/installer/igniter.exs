@@ -62,8 +62,10 @@ defmodule LiveViewReact.Igniter do
     end
   end
 
-  defp update_package_json(igniter),
-    do: update_required_file(igniter, "assets/package.json", &PackageJSON.merge/1)
+  defp update_package_json(igniter) do
+    dependency_path = local_liveview_react_dependency_path()
+    update_required_file(igniter, "assets/package.json", &PackageJSON.merge(&1, dependency_path))
+  end
 
   defp update_typescript_config(igniter) do
     path = "assets/tsconfig.json"
@@ -130,6 +132,7 @@ defmodule LiveViewReact.Igniter do
           ~s|liveViewReactPlugin({ entrypoint: "./js/liveview_react_server.tsx" })|
         )
       )
+      |> then(&ensure_vite_react_dedupe_result/1)
     end)
   end
 
@@ -140,6 +143,18 @@ defmodule LiveViewReact.Igniter do
       |> updater.()
       |> apply_updated_source(source)
     end)
+  end
+
+  defp local_liveview_react_dependency_path do
+    dependency_path =
+      Mix.Project.deps_paths()
+      |> Map.get(:liveview_react, Path.join(Mix.Project.deps_path(), "liveview_react"))
+      |> Path.expand()
+
+    dependency_path
+    |> Path.relative_to(Path.expand("assets"), force: true)
+    |> String.replace("\\", "/")
+    |> then(&"file:#{&1}")
   end
 
   defp configure_development_ssr(igniter) do
@@ -256,6 +271,11 @@ defmodule LiveViewReact.Igniter do
          _expression
        ),
        do: error
+
+  defp ensure_vite_react_dedupe_result({:ok, source}),
+    do: JavaScript.ensure_vite_react_dedupe(source)
+
+  defp ensure_vite_react_dedupe_result({:error, _message} = error), do: error
 
   defp apply_updated_source({:ok, updated}, source),
     do: Source.update(source, :content, fn _content -> updated end)

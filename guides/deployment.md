@@ -96,11 +96,11 @@ A manually configured application must provide the same renderer export and
 ensure its configured `ssr_filepath` matches its actual ESM output. There is no
 alternate script or second server-only registry fallback.
 
-Keep the Hex and npm `liveview_react` packages on the same release line. The
-library publication workflow verifies synchronized package versions, while
-each consuming application remains responsible for keeping its own lockfiles
-and release artifacts consistent.
+Each consuming application should keep its Mix dependency and asset lockfile in
+sync. `mix deps.get` unpacks the Hex package into `deps/liveview_react`, and
+the generated asset `file:` dependency resolves against that local checkout
+during `npm install` or Bun installs. No separate npm publication is required.
 
 Library maintainers should follow [Releasing](releasing.md) for the local
-artifact dry run, tag contract, protected environment, and two-registry
-publication sequence.
+artifact dry run, tag contract, protected environment, and Hex publication
+sequence.

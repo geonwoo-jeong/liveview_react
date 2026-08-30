@@ -1,8 +1,8 @@
 # LiveViewReact examples
 
-This Phoenix 1.8 application exercises the local `liveview_react` Hex and npm
-packages against React 19. It requires Elixir 1.20 or newer and Node.js 24 or
-newer.
+This Phoenix 1.8 application exercises the local `liveview_react` Hex package
+and its bundled JS runtime against React 19. It requires Elixir 1.20 or newer
+and Node.js 24 or newer.
 
 To start it from this directory:
 
@@ -11,8 +11,8 @@ mix setup
 mix phx.server
 ```
 
-`mix setup` installs the example's dependencies, builds the npm package from the
-repository root, and creates both client and SSR bundles. Visit
+`mix setup` installs the example's dependencies, builds the bundled JS package
+from the repository root, and creates both client and SSR bundles. Visit
 [`localhost:4010`](http://localhost:4010) when the server is ready. The landing
 page redirects to `/sample`, which consolidates the current
 `liveview_react` bridge surface into one screen. Vite runs on port 4011 in

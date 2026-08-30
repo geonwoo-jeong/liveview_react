@@ -1,15 +1,18 @@
 import { execFileSync } from "node:child_process";
 import { deepStrictEqual } from "node:assert/strict";
 import {
+  cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 interface PackFile {
@@ -25,6 +28,7 @@ interface PackageManifest {
   readonly exports?: unknown;
   readonly main?: unknown;
   readonly name?: unknown;
+  readonly private?: unknown;
   readonly sideEffects?: unknown;
   readonly type?: unknown;
   readonly types?: unknown;
@@ -54,6 +58,7 @@ const expectedPackageSurface = Object.freeze({
   exports: expectedExportMap,
   main: "./dist/index.js",
   name: "liveview_react",
+  private: true,
   sideEffects: false,
   type: "module",
   types: "./dist/index.d.ts",
@@ -70,6 +75,218 @@ function run(command: string, args: readonly string[], cwd: string): string {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
   });
+}
+
+function writeJson(path: string, value: unknown): void {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function linkProjectPackage(
+  packageName: string,
+  destinationNodeModules: string,
+): void {
+  const pathSegments = packageName.split("/");
+  const source = join(projectRoot, "node_modules", ...pathSegments);
+  const destination = join(destinationNodeModules, ...pathSegments);
+  mkdirSync(dirname(destination), { recursive: true });
+  symlinkSync(source, destination, "junction");
+}
+
+function assertPeerPackageAbsent(
+  packageName: string,
+  nodeModulesDirectory: string,
+): void {
+  if (existsSync(join(nodeModulesDirectory, packageName))) {
+    throw new Error(
+      `${packageName} must not be available from ${nodeModulesDirectory}`,
+    );
+  }
+}
+
+function runFileLinkedPhoenixBuildSmoke(): void {
+  const phoenixRoot = join(temporaryRoot, "phoenix-app");
+  const phoenixDependencyRoot = join(phoenixRoot, "deps");
+  const localPackageDirectory = join(phoenixDependencyRoot, "liveview_react");
+  const assetsDirectory = join(phoenixRoot, "assets");
+  const assetsNodeModules = join(assetsDirectory, "node_modules");
+  const peerInaccessibleNodeModules = Object.freeze([
+    join(localPackageDirectory, "node_modules"),
+    join(phoenixDependencyRoot, "node_modules"),
+    join(phoenixRoot, "node_modules"),
+    join(temporaryRoot, "node_modules"),
+  ]);
+
+  mkdirSync(localPackageDirectory, { recursive: true });
+  mkdirSync(assetsDirectory, { recursive: true });
+  cpSync(
+    join(projectRoot, "package.json"),
+    join(localPackageDirectory, "package.json"),
+  );
+  cpSync(join(projectRoot, "dist"), join(localPackageDirectory, "dist"), {
+    recursive: true,
+  });
+  writeJson(join(assetsDirectory, "package.json"), {
+    name: "phoenix-assets-file-link-smoke",
+    private: true,
+    type: "module",
+    dependencies: {
+      liveview_react: "file:../deps/liveview_react",
+    },
+  });
+
+  run(
+    npmCommand,
+    [
+      "install",
+      "--offline",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--cache",
+      npmCache,
+      "--legacy-peer-deps",
+      "--omit=peer",
+    ],
+    assetsDirectory,
+  );
+
+  const installedPackageDirectory = join(assetsNodeModules, "liveview_react");
+  deepStrictEqual(
+    realpathSync(installedPackageDirectory),
+    realpathSync(localPackageDirectory),
+    "file: dependency did not link to the package copied into Phoenix deps",
+  );
+
+  for (const nodeModulesDirectory of peerInaccessibleNodeModules) {
+    for (const peerPackage of ["react", "react-dom", "vite"]) {
+      assertPeerPackageAbsent(peerPackage, nodeModulesDirectory);
+    }
+  }
+
+  for (const packageName of [
+    "@vitejs/plugin-react",
+    "react",
+    "react-dom",
+    "vite",
+  ]) {
+    linkProjectPackage(packageName, assetsNodeModules);
+  }
+
+  mkdirSync(join(assetsDirectory, "js"), { recursive: true });
+  mkdirSync(join(assetsDirectory, "react-components"), { recursive: true });
+  writeFileSync(
+    join(assetsDirectory, "react-components", "Counter.tsx"),
+    String.raw`
+      export interface CounterProps {
+        readonly count: number;
+      }
+
+      export default function Counter({ count }: CounterProps) {
+        return <button type="button">Count: {count}</button>;
+      }
+    `,
+  );
+  writeFileSync(
+    join(assetsDirectory, "js", "liveview_react.ts"),
+    String.raw`
+      import components from "virtual:liveview-react/components";
+      import { createLiveViewReact } from "liveview_react";
+
+      export const liveViewReact = createLiveViewReact({ components });
+    `,
+  );
+  writeFileSync(
+    join(assetsDirectory, "js", "liveview_react_server.tsx"),
+    String.raw`
+      import components from "virtual:liveview-react/components";
+      import { createLiveViewReactServer } from "liveview_react/server";
+      import type { ServerRenderRequest } from "liveview_react/server";
+
+      const server = createLiveViewReactServer({ components });
+
+      export function render(request: ServerRenderRequest): Promise<string> {
+        return server.render(request);
+      }
+    `,
+  );
+  writeFileSync(
+    join(assetsDirectory, "vite.config.mjs"),
+    String.raw`
+      import react from "@vitejs/plugin-react";
+      import { defineConfig } from "vite";
+      import liveViewReactPlugin from "liveview_react/vite";
+
+      export default defineConfig({
+        plugins: [
+          react(),
+          liveViewReactPlugin({ entrypoint: "./js/liveview_react_server.tsx" }),
+        ],
+        resolve: {
+          dedupe: ["react", "react-dom"],
+        },
+        build: {
+          outDir: "../priv/static/assets",
+          emptyOutDir: true,
+          rollupOptions: {
+            input: "./js/liveview_react.ts",
+          },
+        },
+      });
+    `,
+  );
+  writeFileSync(
+    join(assetsDirectory, "vite.liveview-react.ssr.config.mjs"),
+    String.raw`
+      import react from "@vitejs/plugin-react";
+      import { defineConfig } from "vite";
+      import liveViewReactPlugin from "liveview_react/vite";
+
+      export default defineConfig({
+        plugins: [
+          react(),
+          liveViewReactPlugin({ entrypoint: "./js/liveview_react_server.tsx" }),
+        ],
+        resolve: {
+          dedupe: ["react", "react-dom"],
+        },
+        ssr: {
+          noExternal: true,
+        },
+        build: {
+          ssr: "./js/liveview_react_server.tsx",
+          outDir: "../priv/liveview_react",
+          emptyOutDir: true,
+          rollupOptions: {
+            output: {
+              entryFileNames: "server.mjs",
+              chunkFileNames: "[name]-[hash].mjs",
+            },
+          },
+        },
+      });
+    `,
+  );
+
+  const viteEntrypoint = join(projectRoot, "node_modules/vite/bin/vite.js");
+  run(
+    process.execPath,
+    [viteEntrypoint, "build", "--config", "vite.config.mjs"],
+    assetsDirectory,
+  );
+  run(
+    process.execPath,
+    [viteEntrypoint, "build", "--config", "vite.liveview-react.ssr.config.mjs"],
+    assetsDirectory,
+  );
+
+  if (!existsSync(join(phoenixRoot, "priv", "liveview_react", "server.mjs"))) {
+    throw new Error("File-linked Phoenix SSR build did not emit server.mjs");
+  }
+  for (const nodeModulesDirectory of peerInaccessibleNodeModules) {
+    for (const peerPackage of ["react", "react-dom", "vite"]) {
+      assertPeerPackageAbsent(peerPackage, nodeModulesDirectory);
+    }
+  }
 }
 
 function localMarkdownTargets(source: string): readonly string[] {
@@ -95,6 +312,7 @@ try {
       exports: packageManifest.exports,
       main: packageManifest.main,
       name: packageManifest.name,
+      private: packageManifest.private,
       sideEffects: packageManifest.sideEffects,
       type: packageManifest.type,
       types: packageManifest.types,
@@ -553,8 +771,10 @@ try {
     consumerDirectory,
   );
 
+  runFileLinkedPhoenixBuildSmoke();
+
   process.stdout.write(
-    "Packed package runtime and type import smoke passed.\n",
+    "Packed package runtime/type imports and file-linked Phoenix Vite builds passed.\n",
   );
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });

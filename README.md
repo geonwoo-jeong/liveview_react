@@ -12,14 +12,11 @@
   <strong>React 19 inside Phoenix LiveView, with LiveView still in charge.</strong>
 </p>
 
-<p align="center">
-  <a href="https://hexdocs.pm/liveview_react">HexDocs</a> ·
-  <a href="https://hex.pm/packages/liveview_react">Hex</a> ·
-  <a href="https://www.npmjs.com/package/liveview_react">npm</a> ·
-  <a href="guides/getting_started.md">Getting started</a> ·
-  <a href="guides/comparison.md">Comparison</a> ·
-  <a href="guides/limitations.md">Limitations</a>
-</p>
+[HexDocs](https://hexdocs.pm/liveview_react) ·
+[Hex](https://hex.pm/packages/liveview_react) ·
+[Getting started](guides/getting_started.md) ·
+[Comparison](guides/comparison.md) ·
+[Limitations](guides/limitations.md)
 
 `liveview_react` mounts normal React roots inside Phoenix LiveView. LiveView
 continues to own routing, authoritative server state, validation, reconnects,
@@ -73,9 +70,8 @@ From the Phoenix application root:
 mix igniter.install liveview_react
 ```
 
-The installer wires the matching Hex package, npm package, PhoenixVite, React,
-TypeScript, the browser entrypoint, the SSR entrypoint, and a component
-registry.
+The installer wires PhoenixVite, React, TypeScript, the browser entrypoint, the
+SSR entrypoint, and a component registry.
 
 Useful variants:
 
@@ -312,7 +308,7 @@ verification.
 Maintainer-grade verification adds `mix quality_full`, `npm run quality:ci`,
 and the hosted release workflow. See
 [Testing](guides/testing.md) and [Releasing](guides/releasing.md) before
-publishing.
+cutting a Hex release.
 
 ## Credits
 

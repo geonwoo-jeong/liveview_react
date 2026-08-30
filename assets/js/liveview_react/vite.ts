@@ -3,9 +3,9 @@ import type { Plugin, ViteDevServer } from "vite";
 
 import type { ServerRenderRequest } from "./server";
 import {
-  materializeComponentInputs,
   normalizeInitialFrame,
-} from "./transport/initialFrame";
+  validateComponentInputs,
+} from "./transport/initialFrameData";
 import {
   COMPONENTS_VIRTUAL_MODULE_ID,
   generateComponentRegistry,
@@ -208,7 +208,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseRenderRequest(value: unknown): ServerRenderRequest {
   try {
     const frame = normalizeInitialFrame(value, "render request");
-    materializeComponentInputs(frame, "render request");
+    validateComponentInputs(frame, "render request");
     return frame;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

@@ -110,6 +110,70 @@ defmodule LiveViewReact.Installer.JavaScriptViteTest do
     assert message =~ "different expression"
   end
 
+  test "adds React dedupe to a direct Vite config and is byte-idempotent" do
+    source = """
+    import { defineConfig } from "vite"
+
+    export default defineConfig({
+      plugins: [],
+    })
+    """
+
+    assert {:ok, updated} = JavaScript.ensure_vite_react_dedupe(source)
+    assert updated =~ ~s(resolve: { dedupe: ["react", "react-dom"] })
+    assert {:ok, ^updated} = JavaScript.ensure_vite_react_dedupe(updated)
+  end
+
+  test "merges React dedupe into existing literal resolve configuration" do
+    source = """
+    export default {
+      plugins: [],
+      resolve: {
+        alias: { "@": "/src" },
+        dedupe: [
+          "phoenix",
+          "react",
+        ],
+      },
+    }
+    """
+
+    assert {:ok, updated} = JavaScript.ensure_vite_react_dedupe(source)
+    assert updated =~ ~s(alias: { "@": "/src" })
+    assert updated =~ ~s("phoenix")
+    assert length(Regex.scan(~r/["']react["']/, updated)) == 1
+    assert length(Regex.scan(~r/["']react-dom["']/, updated)) == 1
+    assert {:ok, ^updated} = JavaScript.ensure_vite_react_dedupe(updated)
+
+    without_dedupe = "export default { plugins: [], resolve: { alias: {} } }\n"
+    assert {:ok, added} = JavaScript.ensure_vite_react_dedupe(without_dedupe)
+    assert added =~ ~s(resolve: { alias: {}, dedupe: ["react", "react-dom"] })
+  end
+
+  test "fails closed for dynamic or ambiguous Vite resolve configuration" do
+    cases = [
+      {"const config = { plugins: [] }; export default config", "found none"},
+      {"export default defineConfig({ plugins: [] }, env)", "found none"},
+      {"export default { plugins: [], resolve: makeResolve() }", "direct object literal"},
+      {"export default { plugins: [], resolve: { dedupe: values } }", "direct array literal"},
+      {"export default { plugins: [], resolve: { dedupe: [...values] } }",
+       "only unescaped string literals"},
+      {~s(export default { resolve: { dedupe: ["react", "react-dom"] }, ...config }),
+       "must not contain spread properties"},
+      {~s(export default { resolve: { dedupe: ["react", "react-dom"], ...resolve } }),
+       "must not contain spread properties"},
+      {~s(export default { plugins: [], resolve: { dedupe: ["react", "react"] } }),
+       "multiple times"},
+      {"export default { plugins: [], resolve: {}, resolve: {} }", "multiple resolve"},
+      {"export default { plugins: [], resolve: { dedupe: [], dedupe: [] } }", "multiple dedupe"}
+    ]
+
+    for {source, expected} <- cases do
+      assert {:error, message} = JavaScript.ensure_vite_react_dedupe(source)
+      assert message =~ expected
+    end
+  end
+
   defp ensure_plugin(source) do
     JavaScript.ensure_vite_plugin(
       source,
