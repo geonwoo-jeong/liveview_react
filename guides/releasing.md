@@ -32,13 +32,16 @@ From the repository root:
 ```sh
 mix deps.get
 mix quality_full
+mix docs --warnings-as-errors --output _build/docs
+mix run scripts/check_exdoc_links.exs _build/docs
 npm ci
 npm run quality:ci
 mix hex.publish --dry-run --yes
 ```
 
 These commands install locked dependencies; run formatting, warnings, Credo,
-ExUnit, Dialyzer, JavaScript formatting/lint/types/tests, package assembly, and
+ExUnit, Dialyzer, API documentation generation plus HTML/EPUB internal-link
+validation, JavaScript formatting/lint/types/tests, package assembly, and
 dependency audits; and then build the exact JS payload that will ship inside
 the Hex artifact.
 
@@ -50,11 +53,14 @@ leak into the shipped artifact.
 
 Commit the version and changelog, merge through the normal review process, and
 create the exact annotated tag `v<version>` on the release commit. Do not move a
-published version tag.
+published version tag. Local docs default source links to `main`, CI links to
+the checked-out commit SHA, and the hosted HexDocs release links to the exact
+version tag selected by the publish job.
 
 Run the `Release` workflow with `publish` left false first. Its `dry-run` job
-repeats compile, lint, ExUnit, Vitest, package assembly, and
-`mix hex.publish --dry-run`. One required job builds the
+repeats compile, lint, ExUnit, API documentation rendering plus link
+validation, Vitest, package assembly, and `mix hex.publish --dry-run`. One
+required job builds the
 example's production browser and SSR bundles, then separately runs the real
 Phoenix Chromium suite with the instrumented test endpoint and Vite development
 server against the repository-built runtime. This proves both production

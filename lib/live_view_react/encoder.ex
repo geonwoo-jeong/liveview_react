@@ -46,7 +46,10 @@ defprotocol LiveViewReact.Encoder do
       end
   """
 
-  @type t :: term
+  @typedoc "A value being encoded for LiveViewReact transport."
+  @type t :: term()
+
+  @typedoc "Options forwarded unchanged through recursive protocol implementations."
   @type opts :: Keyword.t()
   @fallback_to_any true
 

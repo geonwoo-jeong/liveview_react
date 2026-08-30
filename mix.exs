@@ -95,7 +95,7 @@ defmodule LiveViewReact.MixProject do
   defp docs do
     [
       name: "LiveViewReact",
-      source_ref: "v#{@version}",
+      source_ref: docs_source_ref(),
       main: "readme",
       logo: "guides/images/liveview_react_logo.png",
       assets: %{"guides/images" => "guides/images"},
@@ -124,6 +124,14 @@ defmodule LiveViewReact.MixProject do
         "LICENSE.md"
       ]
     ]
+  end
+
+  defp docs_source_ref do
+    case System.get_env("LIVEVIEW_REACT_DOCS_SOURCE_REF") do
+      nil -> "main"
+      "" -> raise "LIVEVIEW_REACT_DOCS_SOURCE_REF must not be empty"
+      source_ref -> source_ref
+    end
   end
 
   defp aliases do

@@ -45,9 +45,13 @@ jobs:
           cache: npm
 
       - name: Run local release dry-run checks
+        env:
+          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ github.sha }}
         run: |
           mix deps.get
           mix quality_full
+          mix docs --warnings-as-errors --output "$RUNNER_TEMP/docs"
+          mix run scripts/check_exdoc_links.exs "$RUNNER_TEMP/docs"
           npm ci
           npm run quality:ci
           mix hex.publish --dry-run --yes
@@ -151,7 +155,6 @@ jobs:
 
       - name: Verify release metadata and synchronized version
         env:
-          LIVEVIEW_REACT_REQUIRE_VERSION_TAG: "true"
           LIVEVIEW_REACT_RELEASE_REPOSITORY: ${{ vars.LIVEVIEW_REACT_RELEASE_REPOSITORY }}
         run: |
           npm_version="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")"
@@ -176,4 +179,5 @@ jobs:
         if: steps.registry-state.outputs.hex_exists != 'true'
         env:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ github.ref_name }}
         run: mix hex.publish --yes

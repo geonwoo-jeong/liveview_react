@@ -3,6 +3,7 @@
   inputs: [
     "{mix,.formatter}.exs",
     "{config,lib,test}/**/*.{ex,exs}",
+    "scripts/**/*.{ex,exs}",
     "priv/installer/**/*.{ex,exs}"
   ]
 ]

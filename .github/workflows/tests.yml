@@ -56,6 +56,7 @@ jobs:
         with:
           elixir-version: ${{ matrix.elixir }}
           otp-version: ${{ matrix.otp }}
+          disable_problem_matchers: true
 
       - name: Unlock compatibility dependencies
         run: mix deps.unlock --all
@@ -197,6 +198,7 @@ jobs:
         with:
           elixir-version: 1.20.4
           otp-version: 29.0.5
+          disable_problem_matchers: true
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -227,7 +229,12 @@ jobs:
         run: mix hex.build --unpack --output "$RUNNER_TEMP/hex-package"
 
       - name: Build API documentation without warnings
+        env:
+          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ github.sha }}
         run: mix docs --warnings-as-errors --output "$RUNNER_TEMP/docs"
+
+      - name: Validate generated documentation links
+        run: mix run scripts/check_exdoc_links.exs "$RUNNER_TEMP/docs"
 
   example:
     name: Example / Node ${{ matrix.node }}

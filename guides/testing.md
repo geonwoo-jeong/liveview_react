@@ -52,6 +52,8 @@ The complete local unit and artifact checks are:
 mix deps.get
 mix quality
 mix quality_full
+mix docs --warnings-as-errors --output _build/docs
+mix run scripts/check_exdoc_links.exs _build/docs
 
 npm ci
 npm run quality
@@ -60,7 +62,10 @@ npm run quality:ci
 
 `mix quality_full` is the closest single local entry point to the latest BEAM
 CI lane because it adds retired and vulnerable dependency audits, unused
-dependency checking, and Dialyzer to the fast checks. `npm run quality:ci`
+dependency checking, and Dialyzer to the fast checks. The separate docs
+commands render ExDoc with warnings as errors and then validate every generated
+local `href` and `src` target, including `#fragment` anchors, in both the HTML
+output and XHTML entries inside the EPUB archive. `npm run quality:ci`
 similarly layers package assembly and a dependency audit on top of the fast
 JavaScript checks. The lint stage uses Oxlint with its TypeScript 7-aware
 `oxlint-tsgolint` backend, while Oxfmt owns deterministic source formatting.

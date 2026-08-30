@@ -187,6 +187,7 @@ The main `liveview_react` entry exports four operational error classes:
 
 Invalid JavaScript configuration or wire data raises `TypeError`; missing
 registry entries and invalid mounted identity raise `Error`. On the BEAM side,
-the `LiveViewReact.SSR` namespace uses the `NotConfigured` exception for absent
-infrastructure and `RenderError` for renderer failures; invalid component
-assigns raise `ArgumentError`. Do not parse error message text as an API.
+`LiveViewReact.SSR.NotConfigured` reports absent SSR infrastructure, while
+`LiveViewReact.SSR.RenderError` reports invalid SSR requests, renderer failures,
+or invalid renderer responses. Invalid component assigns raise `ArgumentError`.
+Do not parse error message text as an API.

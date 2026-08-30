@@ -1,15 +1,5 @@
 defmodule LiveViewReact.Installer.JavaScript do
-  @moduledoc """
-  Conservative source updates used by the LiveViewReact installer.
-
-  This module is intentionally not a complete JavaScript parser. It understands
-  static imports, balanced delimiters, comments, strings, nested template
-  literals, regular-expression literals, object properties, and array elements.
-  Template bodies (including interpolation expressions) are opaque, and these
-  helpers are intended for Phoenix entrypoints and Vite config rather than JSX.
-  Static import attributes and escaped module specifiers are rejected. An
-  unsupported or ambiguous shape returns an error instead of rewriting source.
-  """
+  @moduledoc false
 
   alias LiveViewReact.Installer.JavaScript.Imports
   alias LiveViewReact.Installer.JavaScript.Scanner

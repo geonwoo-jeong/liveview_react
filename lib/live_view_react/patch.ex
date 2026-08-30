@@ -41,6 +41,42 @@ defmodule LiveViewReact.Patch do
 
   @unsafe_stream_names ~w(__proto__ constructor prototype)
 
+  @typedoc """
+  A canonical stream frame carried by a `stream` patch operation.
+
+  The frame has exactly the `"items"`, `"inserts"`, `"deletes"`, and `"reset"`
+  fields validated by the stream transport.
+  """
+  @type stream_frame :: %{required(String.t()) => term()}
+
+  @typedoc """
+  A patch map accepted by `serialize/1`.
+
+  `:op` is `"add"`, `"replace"`, `"remove"`, or `"stream"`. Add, replace, and
+  stream operations contain exactly `:op`, `:path`, and `:value`; remove
+  operations contain only `:op` and `:path`. A stream operation's value must be
+  a `stream_frame/0`. Elixir typespecs cannot express the accepted string
+  literals or exact map sizes, so runtime validation remains stricter than this
+  structural union.
+  """
+  @type patch_op ::
+          %{required(:op) => String.t(), required(:path) => String.t()}
+          | %{
+              required(:op) => String.t(),
+              required(:path) => String.t(),
+              required(:value) => term()
+            }
+
+  @typedoc """
+  A list-shaped patch operation returned by `deserialize/1`.
+
+  Remove operations are `[op, path]`; add, replace, and stream operations are
+  `[op, path, value]`. A decoded stream value is a `stream_frame/0`. The
+  non-empty element type is necessarily broader because Elixir typespecs do not
+  model fixed-length heterogeneous lists.
+  """
+  @type decoded_patch_op :: nonempty_list(term())
+
   @doc """
   Serializes patch maps into a compact binary payload.
 
@@ -48,6 +84,7 @@ defmodule LiveViewReact.Patch do
   `%{op: "remove", path: path}`. Unknown operations and malformed shapes fail
   immediately.
   """
+  @spec serialize([patch_op()]) :: binary()
   def serialize(patches) when is_list(patches) do
     :erlang.iolist_to_binary(for patch <- patches, do: serialize_op(patch))
   end
@@ -61,6 +98,7 @@ defmodule LiveViewReact.Patch do
   characters are replaced with `^`. Literal `~` and `^` characters are escaped
   as `~~` and `~^`, so the transform is reversible by `decode_object/1`.
   """
+  @spec encode_object(term()) :: binary()
   def encode_object(value) do
     value
     |> Jason.encode!()
@@ -70,6 +108,7 @@ defmodule LiveViewReact.Patch do
   end
 
   @doc false
+  @spec decode_object(binary()) :: term()
   def decode_object(value) when is_binary(value) do
     value
     |> String.replace(~r/~~|~\^|\^/, fn
@@ -87,6 +126,7 @@ defmodule LiveViewReact.Patch do
   `[op, path]` for `remove` and `[op, path, value]` for all value-bearing
   operations.
   """
+  @spec deserialize(binary()) :: [decoded_patch_op()]
   def deserialize(""), do: []
 
   def deserialize(payload) when is_binary(payload) do
