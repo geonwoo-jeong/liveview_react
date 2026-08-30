@@ -120,13 +120,8 @@ npm run benchmark
 That check requires the `app.js -> lazy.js -> lazy-component.js` split and
 reports all three file sizes. Results vary by host and deliberately have no
 numeric regression threshold; semantic invariants still fail. The manually
-dispatched `Benchmarks` workflow performs the required build and writes both
-reports to its job summary rather than treating measurements as performance
-promises.
+dispatched `Benchmarks` workflow performs the required build and captures both
+raw reports without treating measurements as performance promises.
 
-Before a release, use the single reproducible check entry point described in
-[Releasing](releasing.md):
-
-```sh
-npm run release:check
-```
+Before a release, follow the artifact and registry dry-run sequence in
+[Releasing](releasing.md).
