@@ -37,6 +37,7 @@ defmodule LiveViewReactTest do
     removed_app = ["live", "react"] |> Enum.join("_") |> String.to_atom()
 
     assert Application.spec(:liveview_react, :vsn) == ~c"0.1.0"
+    assert :inets in Application.spec(:liveview_react, :applications)
     assert Application.spec(removed_app) == nil
   end
 

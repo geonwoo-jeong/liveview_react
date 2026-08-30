@@ -24,15 +24,8 @@ defmodule LiveViewReact.MixProject do
   end
 
   def application do
-    conditionals =
-      case Application.get_env(:liveview_react, :ssr_module) do
-        # Needed to use :httpc.request
-        LiveViewReact.SSR.ViteJS -> [:inets]
-        _ -> []
-      end
-
     [
-      extra_applications: [:logger] ++ conditionals
+      extra_applications: [:inets, :logger]
     ]
   end
 
