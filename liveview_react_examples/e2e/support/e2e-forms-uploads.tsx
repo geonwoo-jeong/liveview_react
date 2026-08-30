@@ -1,15 +1,53 @@
 import { useState } from "react";
-import { useLiveForm, useLiveUpload } from "liveview_react";
+import {
+  useLiveForm,
+  useLiveUpload,
+  type LiveFormServerSnapshot,
+  type LiveUploadConfig,
+  type LiveUploadSelection,
+  type UseLiveUploadResult,
+} from "liveview_react";
 
-function json(value) {
+interface FormValues {
+  readonly title: string;
+}
+
+interface SubmitReply {
+  readonly manual_files: readonly string[];
+  readonly revision: number;
+  readonly status: string;
+  readonly title: string;
+}
+
+interface UploadEntriesProps {
+  readonly name: string;
+  readonly onCancel: (entryRef: string) => Promise<void> | void;
+  readonly upload: UseLiveUploadResult;
+}
+
+interface UploadSelectionsProps {
+  readonly name: string;
+  readonly selections: readonly LiveUploadSelection[];
+}
+
+interface E2EFormsUploadsProbeProps {
+  readonly autoProgressEvents: readonly string[];
+  readonly autoUpload: LiveUploadConfig;
+  readonly manualUpload: LiveUploadConfig;
+  readonly mountGeneration: number;
+  readonly serverForm: LiveFormServerSnapshot<FormValues>;
+  readonly uploadedFiles: readonly string[];
+}
+
+function json(value: unknown): string {
   return JSON.stringify(value) ?? "undefined";
 }
 
-function errorMessage(error) {
+function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function UploadEntries({ name, upload, onCancel }) {
+function UploadEntries({ name, upload, onCancel }: UploadEntriesProps) {
   return (
     <ul data-testid={`${name}-entries`}>
       {upload.entries.map((entry) => (
@@ -30,7 +68,7 @@ function UploadEntries({ name, upload, onCancel }) {
   );
 }
 
-function UploadSelections({ name, selections }) {
+function UploadSelections({ name, selections }: UploadSelectionsProps) {
   return (
     <output data-testid={`${name}-selections`}>
       {selections
@@ -50,8 +88,8 @@ export function E2EFormsUploadsProbe({
   mountGeneration,
   serverForm,
   uploadedFiles,
-}) {
-  const form = useLiveForm(serverForm, {
+}: E2EFormsUploadsProbeProps) {
+  const form = useLiveForm<FormValues, SubmitReply>(serverForm, {
     changeEvent: "validate_form",
     debounce: 15,
     submitEvent: "submit_form",
@@ -73,7 +111,10 @@ export function E2EFormsUploadsProbe({
   const [retryResult, setRetryResult] = useState("none");
   const [submitResult, setSubmitResult] = useState("none");
 
-  async function cancelEntry(upload, ref) {
+  async function cancelEntry(
+    upload: UseLiveUploadResult,
+    ref: string,
+  ): Promise<void> {
     try {
       setCancelReply(json(await upload.cancel(ref)));
     } catch (error) {
@@ -81,7 +122,7 @@ export function E2EFormsUploadsProbe({
     }
   }
 
-  async function cancelEveryManualEntry() {
+  async function cancelEveryManualEntry(): Promise<void> {
     try {
       setCancelReply(json(await manual.cancelAll()));
     } catch (error) {
@@ -89,7 +130,7 @@ export function E2EFormsUploadsProbe({
     }
   }
 
-  async function submitForm() {
+  async function submitForm(): Promise<void> {
     setSubmitResult("pending");
     try {
       setSubmitResult(json(await form.submit()));
@@ -98,7 +139,7 @@ export function E2EFormsUploadsProbe({
     }
   }
 
-  function retryManualUpload() {
+  function retryManualUpload(): void {
     try {
       manual.retryInterrupted();
       setRetryResult("retried");

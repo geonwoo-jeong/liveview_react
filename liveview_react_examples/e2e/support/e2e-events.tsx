@@ -13,27 +13,57 @@ import {
   retainIncrementCallback,
 } from "./e2e-events-harness";
 
-export function E2EEventsProbe({ onIncrement, patchStep }) {
+interface IncrementPayload {
+  readonly by: number;
+  readonly label: string;
+}
+
+interface ProgrammaticReply {
+  readonly doubled: number;
+  readonly source: string;
+}
+
+interface EventReply {
+  readonly result: string;
+}
+
+interface ServerEventPayload {
+  readonly sequence: number;
+}
+
+interface E2EEventsProbeProps {
+  readonly onIncrement?: (payload: IncrementPayload) => void;
+  readonly patchStep: string;
+}
+
+export function E2EEventsProbe({
+  onIncrement,
+  patchStep,
+}: E2EEventsProbeProps) {
   const { pushEvent } = useLiveViewReact();
   const connection = useLiveConnection();
   const navigation = useLiveNavigation();
-  const eventReply = useEventReply("event_reply", {
+  const eventReply = useEventReply<EventReply, EventReply>("event_reply", {
     initialData: { result: "none" },
   });
   const [programmaticReply, setProgrammaticReply] = useState("none");
-  const [serverDeliveries, setServerDeliveries] = useState([]);
+  const [serverDeliveries, setServerDeliveries] = useState<readonly number[]>(
+    [],
+  );
 
   useEffect(() => {
     retainIncrementCallback(onIncrement);
   }, [onIncrement]);
 
-  useLiveEvent("e2e_server_event", ({ sequence }) => {
+  useLiveEvent<ServerEventPayload>("e2e_server_event", ({ sequence }) => {
     recordServerEventDelivery(sequence);
     setServerDeliveries((deliveries) => [...deliveries, sequence]);
   });
 
   async function requestProgrammaticReply() {
-    const reply = await pushEvent("programmatic_reply", { amount: 3 });
+    const reply = await pushEvent<ProgrammaticReply>("programmatic_reply", {
+      amount: 3,
+    });
     setProgrammaticReply(`${reply.source}:${reply.doubled}`);
   }
 

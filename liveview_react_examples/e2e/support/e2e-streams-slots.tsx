@@ -1,20 +1,64 @@
-import { Children, useLayoutEffect, useRef } from "react";
+import { Children, useLayoutEffect, useRef, type ReactNode } from "react";
+import type { StreamItem } from "liveview_react";
 
-function requireStreamItem(streamName, item) {
-  if (
-    typeof item !== "object" ||
-    item === null ||
-    typeof item.__dom_id !== "string" ||
-    typeof item.id !== "string" ||
-    typeof item.label !== "string"
-  ) {
+interface E2EStreamItem extends StreamItem {
+  readonly id: string;
+  readonly label: string;
+}
+
+interface StreamListProps {
+  readonly items: readonly StreamItem[];
+  readonly name: string;
+}
+
+interface E2EStreamsSlotsProbeProps {
+  readonly children?: ReactNode;
+  readonly lastOperation: string;
+  readonly mountPhase: string;
+  readonly negative: readonly StreamItem[];
+  readonly positive: readonly StreamItem[];
+  readonly primary: readonly StreamItem[];
+  readonly react_missing_update_only_limit: readonly StreamItem[];
+  readonly react_reset_update_only: readonly StreamItem[];
+  readonly react_update_limit: readonly StreamItem[];
+  readonly react_update_only_limit: readonly StreamItem[];
+  readonly sidebar?: ReactNode;
+}
+
+interface E2EClientOnlyStreamProbeProps {
+  readonly client_only: readonly StreamItem[];
+}
+
+interface StreamHydrationWindow {
+  readonly __liveViewReactStreamHydrationCapture?: {
+    readonly node: Element;
+    readonly selector: string;
+  };
+  readonly __liveViewReactStreamHydrationEvidence?: unknown;
+}
+
+function isE2EStreamItem(item: unknown): item is E2EStreamItem {
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    "__dom_id" in item &&
+    typeof item.__dom_id === "string" &&
+    "id" in item &&
+    typeof item.id === "string" &&
+    "label" in item &&
+    typeof item.label === "string"
+  );
+}
+
+function requireStreamItem(streamName: string, item: unknown): E2EStreamItem {
+  if (!isE2EStreamItem(item)) {
     throw new TypeError(`${streamName} contains an invalid stream item`);
   }
 
   return item;
 }
 
-function StreamList({ items, name }) {
+function StreamList({ items, name }: StreamListProps) {
   if (!Array.isArray(items)) {
     throw new TypeError(`${name} stream prop is required`);
   }
@@ -40,9 +84,12 @@ function StreamList({ items, name }) {
   );
 }
 
-function recordHydrationEvidence(probe) {
-  const capture = window.__liveViewReactStreamHydrationCapture;
-  if (!capture || window.__liveViewReactStreamHydrationEvidence) return;
+function recordHydrationEvidence(probe: HTMLElement): void {
+  const hydrationWindow = window as unknown as StreamHydrationWindow;
+  const capture = hydrationWindow.__liveViewReactStreamHydrationCapture;
+  if (!capture || hydrationWindow.__liveViewReactStreamHydrationEvidence) {
+    return;
+  }
 
   const streamIds = Array.from(
     probe.querySelectorAll(
@@ -76,8 +123,8 @@ export function E2EStreamsSlotsProbe({
   react_update_limit,
   react_update_only_limit,
   sidebar,
-}) {
-  const probeRef = useRef(null);
+}: E2EStreamsSlotsProbeProps) {
+  const probeRef = useRef<HTMLElement | null>(null);
   const hasDefaultSlot = Children.count(children) > 0;
   const hasNamedSlot = Children.count(sidebar) > 0;
 
@@ -131,7 +178,9 @@ export function E2EStreamsSlotsProbe({
   );
 }
 
-export function E2EClientOnlyStreamProbe({ client_only }) {
+export function E2EClientOnlyStreamProbe({
+  client_only,
+}: E2EClientOnlyStreamProbeProps) {
   return (
     <section data-testid="client-only-stream-probe">
       <StreamList items={client_only} name="client-only" />

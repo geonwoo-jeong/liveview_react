@@ -1,4 +1,5 @@
 import { auditLiveViewReactHook, createDelayedLoader } from "./e2e-harness";
+import type { ComponentRegistry } from "liveview_react";
 import { E2EEventsProbe } from "./e2e-events";
 import { E2EFormsUploadsProbe } from "./e2e-forms-uploads";
 import { E2ELifecycleProbe, E2EStrictModeProbe } from "./e2e-lifecycle";
@@ -15,7 +16,13 @@ import {
 
 export { auditLiveViewReactHook, e2eRootOptions };
 
-export function e2eConnectParams() {
+export interface E2EConnectParams {
+  readonly e2e_queued_patch: boolean;
+  readonly e2e_recovery_seed: boolean;
+  readonly e2e_stream_reconnect: boolean;
+}
+
+export function e2eConnectParams(): Readonly<E2EConnectParams> {
   const search = new URLSearchParams(window.location.search);
   return Object.freeze({
     e2e_queued_patch: search.get("queued_reconnect") === "true",
@@ -44,4 +51,4 @@ export default Object.freeze({
   E2EDelayedDestroy: Object.freeze({
     load: createDelayedLoader("destroy", () => import("./e2e-delayed")),
   }),
-});
+}) satisfies ComponentRegistry;

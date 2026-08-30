@@ -5,10 +5,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": [
-    "../playwright.config.ts",
-    "./**/*.ts",
-    "./support/**/*.js",
-    "./support/**/*.jsx"
-  ]
+  "include": ["../playwright.config.ts", "./**/*.ts", "./**/*.tsx"]
 }

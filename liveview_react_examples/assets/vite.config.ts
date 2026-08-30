@@ -27,7 +27,7 @@ export default defineConfig(({ command, isSsrBuild }) => {
       react(),
       liveViewReact({
         componentDirectory: "./discovered-components",
-        entrypoint: "./js/server.js",
+        entrypoint: "./js/server.ts",
       }),
       tailwindcss(),
     ],
@@ -64,7 +64,7 @@ export default defineConfig(({ command, isSsrBuild }) => {
       manifest: false, // do not generate manifest.json
       rollupOptions: {
         input: {
-          app: path.resolve(rootDir, "./js/app.js"),
+          app: path.resolve(rootDir, "./js/app.ts"),
         },
         output: {
           // remove hashes to match phoenix way of handling assets

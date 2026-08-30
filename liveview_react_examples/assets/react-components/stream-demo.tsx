@@ -1,19 +1,29 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useLiveViewReact } from "liveview_react";
+import type { StreamItem } from "liveview_react";
 
-export function StreamDemo({ messages = [] }) {
+type Message = StreamItem & {
+  readonly id: number;
+  readonly text: string;
+};
+
+type StreamDemoProps = {
+  readonly messages?: readonly Message[];
+};
+
+export function StreamDemo({ messages = [] }: StreamDemoProps) {
   const { pushEvent } = useLiveViewReact();
   const [draft, setDraft] = useState("");
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
 
-  const send = (e) => {
-    e.preventDefault();
-    pushEvent("add", { text: draft });
+  const send = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void pushEvent("add", { text: draft });
     setDraft("");
   };
 
-  const startEditing = (message) => {
+  const startEditing = (message: Message) => {
     setEditingId(message.id);
     setEditText(message.text);
   };
@@ -23,9 +33,11 @@ export function StreamDemo({ messages = [] }) {
     setEditText("");
   };
 
-  const saveEdit = (e) => {
-    e.preventDefault();
-    pushEvent("edit", { id: editingId, text: editText });
+  const saveEdit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (editingId === null) return;
+
+    void pushEvent("edit", { id: editingId, text: editText });
     stopEditing();
   };
 
@@ -51,7 +63,9 @@ export function StreamDemo({ messages = [] }) {
         <button
           type="button"
           className="bg-black rounded text-white px-2 py-1 font-bold cursor-pointer"
-          onClick={() => pushEvent("replace_all", {})}
+          onClick={() => {
+            void pushEvent("replace_all", {});
+          }}
         >
           Replace all
         </button>
@@ -100,7 +114,9 @@ export function StreamDemo({ messages = [] }) {
                   <button
                     type="button"
                     className="bg-black rounded text-white px-2 py-1 font-bold cursor-pointer"
-                    onClick={() => pushEvent("delete", { id: message.id })}
+                    onClick={() => {
+                      void pushEvent("delete", { id: message.id });
+                    }}
                   >
                     Delete
                   </button>

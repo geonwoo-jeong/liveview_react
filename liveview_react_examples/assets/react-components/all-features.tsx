@@ -48,7 +48,8 @@ type AllFeaturesProps = {
   readonly livePid: string;
   readonly notices: readonly string[];
   readonly onServerIncrement?:
-    ((payload: { by: number; source: string }) => void) | null;
+    | ((payload: { by: number; source: string }) => void)
+    | null;
   readonly portalTargetId: string;
   readonly searchReply: string;
   readonly sidebar?: ReactNode;

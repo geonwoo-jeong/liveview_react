@@ -12,12 +12,31 @@ import {
 
 let nextInstanceNumber = 0;
 
-function allocateInstanceId(label) {
+interface QueuedItem {
+  readonly id: string;
+  readonly label: string;
+}
+
+interface E2ELifecycleProbeProps {
+  readonly label: string;
+  readonly queuedItems?: readonly QueuedItem[];
+  readonly serverVersion: number;
+}
+
+interface StrictPingPayload {
+  readonly sequence: number;
+}
+
+function allocateInstanceId(label: string): string {
   nextInstanceNumber += 1;
   return `${label}-${nextInstanceNumber}`;
 }
 
-export function E2ELifecycleProbe({ label, queuedItems = [], serverVersion }) {
+export function E2ELifecycleProbe({
+  label,
+  queuedItems = [],
+  serverVersion,
+}: E2ELifecycleProbeProps) {
   const [instanceId] = useState(() => allocateInstanceId(label));
   const [localCount, setLocalCount] = useState(0);
 
@@ -48,7 +67,7 @@ export function E2ELifecycleProbe({ label, queuedItems = [], serverVersion }) {
 function StrictListenerProbe() {
   const [deliveries, setDeliveries] = useState(0);
 
-  useLiveEvent("e2e_strict_ping", () => {
+  useLiveEvent<StrictPingPayload>("e2e_strict_ping", () => {
     recordStrictDelivery();
     setDeliveries((count) => count + 1);
   });

@@ -10,7 +10,29 @@ import discoveredComponents from "virtual:liveview-react/components";
 import manualComponents from "../react-components";
 import { clientRootOptions } from "../react-components/root-options";
 import { createLiveViewReact } from "liveview_react";
+import type {
+  ComponentRegistry,
+  LiveViewReactHookDefinition,
+  LiveViewReactRootOptions,
+  LiveViewReactRootWrapperContext,
+} from "liveview_react";
 import "../css/app.css";
+
+declare const __LIVEVIEW_REACT_E2E__: boolean;
+
+declare global {
+  interface Window {
+    liveSocket: LiveSocket;
+  }
+}
+
+type E2EOptions = {
+  readonly auditHook?: (
+    hook: LiveViewReactHookDefinition,
+  ) => LiveViewReactHookDefinition;
+  readonly connectParams?: () => Readonly<Record<string, unknown>>;
+  readonly rootOptions?: LiveViewReactRootOptions;
+};
 
 const components = Object.freeze({
   ...manualComponents,
@@ -22,12 +44,15 @@ topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
 window.addEventListener("phx:page-loading-start", () => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", () => topbar.hide());
 
-function mergeRootOptions(baseOptions, overrideOptions = {}) {
+function mergeRootOptions(
+  baseOptions: LiveViewReactRootOptions,
+  overrideOptions: LiveViewReactRootOptions = {},
+): LiveViewReactRootOptions {
   const baseWrapRoot = baseOptions.wrapRoot;
   const overrideWrapRoot = overrideOptions.wrapRoot;
   const wrapRoot =
     baseWrapRoot && overrideWrapRoot
-      ? (context) =>
+      ? (context: LiveViewReactRootWrapperContext) =>
           overrideWrapRoot(
             Object.freeze({
               ...context,
@@ -43,10 +68,25 @@ function mergeRootOptions(baseOptions, overrideOptions = {}) {
   });
 }
 
-function connectLiveView(registeredComponents, e2eOptions = {}) {
+function readCsrfToken(): string {
+  const token = document.querySelector<HTMLMetaElement>(
+    "meta[name='csrf-token']",
+  )?.content;
+
+  if (!token) {
+    throw new Error("Missing CSRF token meta tag");
+  }
+
+  return token;
+}
+
+function connectLiveView(
+  registeredComponents: ComponentRegistry,
+  e2eOptions: E2EOptions = {},
+): void {
   const rootOptions = mergeRootOptions(
     clientRootOptions,
-    e2eOptions.rootOptions,
+    e2eOptions.rootOptions ?? {},
   );
   const liveViewReact = createLiveViewReact({
     ...rootOptions,
@@ -55,9 +95,7 @@ function connectLiveView(registeredComponents, e2eOptions = {}) {
   const liveViewReactHook = e2eOptions.auditHook
     ? e2eOptions.auditHook(liveViewReact.hooks.LiveViewReactHook)
     : liveViewReact.hooks.LiveViewReactHook;
-  const csrfToken = document
-    .querySelector("meta[name='csrf-token']")
-    .getAttribute("content");
+  const csrfToken = readCsrfToken();
   const liveSocket = new LiveSocket("/live", Socket, {
     hooks: { ...liveViewReact.hooks, LiveViewReactHook: liveViewReactHook },
     longPollFallbackMs: 2500,
@@ -75,7 +113,7 @@ function connectLiveView(registeredComponents, e2eOptions = {}) {
 }
 
 if (__LIVEVIEW_REACT_E2E__) {
-  import("../../e2e/support/registry").then(
+  void import("../../e2e/support/registry").then(
     ({
       auditLiveViewReactHook,
       default: e2eComponents,

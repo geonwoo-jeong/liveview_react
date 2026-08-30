@@ -1,22 +1,27 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLiveEvent, useLiveViewReact } from "liveview_react";
 
+type LogItem = {
+  readonly body: string;
+  readonly id: number;
+};
+
 export function LogList() {
   const { pushEvent } = useLiveViewReact();
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState<readonly LogItem[]>([]);
   const [showItems, setShowItems] = useState(true);
   const [body, setBody] = useState("");
 
-  const addItem = (e) => {
-    e.preventDefault();
-    pushEvent("add_item", { body });
+  const addItem = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void pushEvent("add_item", { body });
     setBody("");
   };
 
   const resetItems = () => setItems([]);
 
-  useLiveEvent("new_item", (item) => {
+  useLiveEvent<LogItem>("new_item", (item) => {
     setItems((prevItems) => [item, ...prevItems]);
   });
 

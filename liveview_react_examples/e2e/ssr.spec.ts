@@ -61,7 +61,7 @@ test("hydrates in place before applying connected props and context", async ({
   const diagnostics = captureHydrationDiagnostics(page);
   const clientEntryGate = Promise.withResolvers<void>();
 
-  await page.route("http://127.0.0.1:4011/js/app.js", async (route) => {
+  await page.route("http://127.0.0.1:4011/js/app.ts", async (route) => {
     await clientEntryGate.promise;
     await route.continue();
   });

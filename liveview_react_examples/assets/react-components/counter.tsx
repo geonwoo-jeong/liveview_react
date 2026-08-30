@@ -1,6 +1,10 @@
 import { useState } from "react";
 
-export function Counter({ count }) {
+type CounterProps = {
+  readonly count: number;
+};
+
+export function Counter({ count }: CounterProps) {
   const [amount, setAmount] = useState(1);
 
   return (

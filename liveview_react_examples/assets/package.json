@@ -9,7 +9,7 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
-    "build-server": "npm run typecheck && vite build --ssr js/server.js --out-dir ../priv/liveview_react --minify esbuild && npm run smoke-server",
+    "build-server": "npm run typecheck && vite build --ssr js/server.ts --out-dir ../priv/liveview_react --minify esbuild && npm run smoke-server",
     "smoke-server": "node scripts/smoke-server.mjs"
   },
   "devDependencies": {

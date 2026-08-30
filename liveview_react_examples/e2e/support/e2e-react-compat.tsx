@@ -11,8 +11,12 @@ import {
   useRef,
   useState,
   useTransition,
+  type ComponentPropsWithoutRef,
+  type PropsWithChildren,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import type { LiveViewReactRootOptions } from "liveview_react";
 
 import { DualRangeSlider } from "../../assets/react-components/ui/dual-range-slider";
 import { recordRootError } from "./e2e-harness";
@@ -20,12 +24,16 @@ import { recordRootError } from "./e2e-harness";
 const CompatRootContext = createContext("missing-root-context");
 const lazyModule = Object.freeze({ default: CompatLazyReady });
 
+type CompatLazyModule = typeof lazyModule;
+type CompatClassCounterState = Readonly<{ count: number }>;
+type CompatErrorBoundaryState = Readonly<{ message: string | null }>;
+
 let nextInstanceNumber = 0;
 let nextMemoRenderNumber = 0;
-let releaseLazyModule;
+let releaseLazyModule!: (module: CompatLazyModule) => void;
 let lazyModuleResolved = false;
 
-const lazyModulePromise = new Promise((resolve) => {
+const lazyModulePromise = new Promise<CompatLazyModule>((resolve) => {
   releaseLazyModule = resolve;
 });
 
@@ -41,7 +49,7 @@ function allocateMemoRenderNumber() {
   return nextMemoRenderNumber;
 }
 
-async function resolveSuspense() {
+async function resolveSuspense(): Promise<boolean> {
   const didResolve = !lazyModuleResolved;
 
   if (didResolve) {
@@ -72,20 +80,24 @@ const CompatMemoProbe = memo(function CompatMemoProbe() {
   );
 });
 
-const CompatFocusableInput = forwardRef(
-  function CompatFocusableInput(properties, ref) {
-    return <input {...properties} ref={ref} />;
-  },
-);
+const CompatFocusableInput = forwardRef<
+  HTMLInputElement,
+  ComponentPropsWithoutRef<"input">
+>(function CompatFocusableInput(properties, ref) {
+  return <input {...properties} ref={ref} />;
+});
 
-class CompatClassCounter extends Component {
-  state = Object.freeze({ count: 0 });
+class CompatClassCounter extends Component<
+  Record<string, never>,
+  CompatClassCounterState
+> {
+  override state: CompatClassCounterState = Object.freeze({ count: 0 });
 
   increment = () => {
     this.setState(({ count }) => Object.freeze({ count: count + 1 }));
   };
 
-  render() {
+  override render(): ReactNode {
     return (
       <section aria-label="class component counter">
         <output data-testid="compat-class-count">{this.state.count}</output>
@@ -101,16 +113,19 @@ class CompatClassCounter extends Component {
   }
 }
 
-class CompatErrorBoundary extends Component {
-  state = Object.freeze({ message: null });
+class CompatErrorBoundary extends Component<
+  PropsWithChildren,
+  CompatErrorBoundaryState
+> {
+  override state: CompatErrorBoundaryState = Object.freeze({ message: null });
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: unknown): CompatErrorBoundaryState {
     return Object.freeze({
       message: error instanceof Error ? error.message : String(error),
     });
   }
 
-  render() {
+  override render(): ReactNode {
     if (this.state.message !== null) {
       return (
         <output data-testid="compat-error-fallback">
@@ -123,7 +138,11 @@ class CompatErrorBoundary extends Component {
   }
 }
 
-function CompatThrowingChild({ shouldThrow }) {
+function CompatThrowingChild({
+  shouldThrow,
+}: {
+  readonly shouldThrow: boolean;
+}) {
   if (shouldThrow) {
     throw new Error("compat boundary failure");
   }
@@ -145,7 +164,7 @@ function CompatPortalContent() {
 }
 
 function CompatCanvas2DProbe() {
-  const canvasRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pixel, setPixel] = useState("pending");
 
   useEffect(() => {
@@ -172,7 +191,7 @@ function CompatCanvas2DProbe() {
 }
 
 function CompatWebGLProbe() {
-  const canvasRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pixel, setPixel] = useState("pending");
 
   useEffect(() => {
@@ -226,12 +245,16 @@ export const e2eRootOptions = Object.freeze({
       </CompatRootContext.Provider>
     );
   },
-});
+} satisfies LiveViewReactRootOptions);
 
-export function E2EReactCompatProbe({ serverVersion }) {
+export function E2EReactCompatProbe({
+  serverVersion,
+}: {
+  readonly serverVersion: number;
+}) {
   const generatedId = useId();
   const rootContext = useContext(CompatRootContext);
-  const focusableInputRef = useRef(null);
+  const focusableInputRef = useRef<HTMLInputElement>(null);
   const [instanceId] = useState(allocateInstanceId);
   const [controlledValue, setControlledValue] = useState("");
   const [transitionValue, setTransitionValue] = useState(0);
@@ -344,7 +367,11 @@ export function E2EReactCompatProbe({ serverVersion }) {
   );
 }
 
-export function E2EUncaughtErrorProbe({ shouldThrow }) {
+export function E2EUncaughtErrorProbe({
+  shouldThrow,
+}: {
+  readonly shouldThrow: boolean;
+}) {
   if (shouldThrow) {
     throw new Error("compat uncaught failure");
   }

@@ -199,7 +199,7 @@ test("hydrates the exact dead stream DOM before applying the delayed connected s
   const browserErrors = captureBrowserErrors(page);
   const clientEntryGate = Promise.withResolvers<void>();
 
-  await page.route("http://127.0.0.1:4011/js/app.js", async (route) => {
+  await page.route("http://127.0.0.1:4011/js/app.ts", async (route) => {
     await clientEntryGate.promise;
     await route.continue();
   });

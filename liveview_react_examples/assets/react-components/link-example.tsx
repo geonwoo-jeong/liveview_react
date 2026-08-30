@@ -1,6 +1,10 @@
 import { Link } from "liveview_react";
 
-export function LinkExample({ currentPath = "/" }) {
+type LinkExampleProps = {
+  readonly currentPath?: string;
+};
+
+export function LinkExample({ currentPath = "/" }: LinkExampleProps) {
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
       <div className="text-center">

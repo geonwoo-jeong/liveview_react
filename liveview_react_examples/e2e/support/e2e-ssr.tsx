@@ -2,12 +2,20 @@ import { useId, useState } from "react";
 import { preload, preloadModule } from "react-dom";
 import { useLiveEvent, useLiveViewReact } from "liveview_react";
 
-export function E2ESSRProbe({ phase }) {
+interface SSRLiveEventPayload {
+  readonly message: string;
+}
+
+interface E2ESSRProbeProps {
+  readonly phase: string;
+}
+
+export function E2ESSRProbe({ phase }: E2ESSRProbeProps) {
   const inputId = useId();
   const { el } = useLiveViewReact();
   const [serverEvent, setServerEvent] = useState("pending");
 
-  useLiveEvent("e2e_ssr_live_event", ({ message }) => {
+  useLiveEvent<SSRLiveEventPayload>("e2e_ssr_live_event", ({ message }) => {
     setServerEvent(message);
   });
 

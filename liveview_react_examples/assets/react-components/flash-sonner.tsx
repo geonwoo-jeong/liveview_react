@@ -2,11 +2,19 @@ import { useEffect } from "react";
 import { useLiveViewReact } from "liveview_react";
 import { Toaster, toast } from "sonner";
 
-export function FlashSonner({ flash }) {
+const FLASH_KINDS = ["info", "error"] as const;
+
+type FlashKind = (typeof FLASH_KINDS)[number];
+
+type FlashSonnerProps = {
+  readonly flash: Readonly<Partial<Record<FlashKind, string | null>>>;
+};
+
+export function FlashSonner({ flash }: FlashSonnerProps) {
   const { pushEvent } = useLiveViewReact();
 
   useEffect(() => {
-    for (const kind of ["info", "error"]) {
+    for (const kind of FLASH_KINDS) {
       const message = flash[kind];
       if (!message) continue;
 
@@ -15,7 +23,9 @@ export function FlashSonner({ flash }) {
         duration: Infinity,
         richColors: true,
         closeButton: true,
-        onDismiss: () => pushEvent("lv:clear-flash", { key: kind }),
+        onDismiss: () => {
+          void pushEvent("lv:clear-flash", { key: kind });
+        },
       });
     }
   }, [flash, pushEvent]);

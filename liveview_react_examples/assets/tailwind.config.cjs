@@ -7,8 +7,7 @@ const path = require("path");
 
 module.exports = {
   content: [
-    "./js/**/*.js",
-    "./react-components/**/*.jsx",
+    "./js/**/*.ts",
     "./react-components/**/*.tsx",
     "../lib/liveview_react_examples_web.ex",
     "../lib/liveview_react_examples_web/**/*.*ex",

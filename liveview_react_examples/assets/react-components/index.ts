@@ -1,18 +1,31 @@
+import type { ComponentRegistry, LiveViewReactComponent } from "liveview_react";
 import { Simple } from "./simple";
 
-function loadNamed(importer, exportName) {
-  return () =>
-    importer().then((module) => ({
-      default: module[exportName],
-    }));
+type NamedComponentModule<
+  TExportName extends string,
+  TComponent extends LiveViewReactComponent,
+> = Readonly<Record<TExportName, TComponent>>;
+
+function loadNamed<
+  TExportName extends string,
+  TComponent extends LiveViewReactComponent,
+>(
+  importer: () => Promise<NamedComponentModule<TExportName, TComponent>>,
+  exportName: TExportName,
+): () => Promise<{ readonly default: TComponent }> {
+  return async () => {
+    const module = await importer();
+
+    return Object.freeze({ default: module[exportName] });
+  };
 }
 
-export default {
+const manualComponents: ComponentRegistry = Object.freeze({
   AllFeatures: {
-    load: loadNamed(() => import("./all-features.tsx"), "AllFeatures"),
+    load: loadNamed(() => import("./all-features"), "AllFeatures"),
   },
   SampleFormsUploads: {
-    load: loadNamed(() => import("./all-features.tsx"), "SampleFormsUploads"),
+    load: loadNamed(() => import("./all-features"), "SampleFormsUploads"),
   },
   Simple: { component: Simple },
   Context: {
@@ -52,4 +65,6 @@ export default {
   Typescript: {
     load: loadNamed(() => import("./typescript"), "Typescript"),
   },
-};
+});
+
+export default manualComponents;
