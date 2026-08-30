@@ -12,11 +12,13 @@
   <strong>React 19 inside Phoenix LiveView, with LiveView still in charge.</strong>
 </p>
 
-[HexDocs](https://hexdocs.pm/liveview_react) ·
-[Hex](https://hex.pm/packages/liveview_react) ·
-[Getting started](guides/getting_started.md) ·
-[Comparison](guides/comparison.md) ·
-[Limitations](guides/limitations.md)
+<p align="center">
+  <a href="https://hexdocs.pm/liveview_react">HexDocs</a> ·
+  <a href="https://hex.pm/packages/liveview_react">Hex</a> ·
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/getting_started.md">Getting started</a> ·
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/comparison.md">Comparison</a> ·
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/limitations.md">Limitations</a>
+</p>
 
 `liveview_react` mounts normal React roots inside Phoenix LiveView. LiveView
 continues to own routing, authoritative server state, validation, reconnects,

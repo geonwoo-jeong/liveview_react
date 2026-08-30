@@ -99,7 +99,7 @@ alternate script or second server-only registry fallback.
 Each consuming application should keep its Mix dependency and asset lockfile in
 sync. `mix deps.get` unpacks the Hex package into `deps/liveview_react`, and
 the generated asset `file:` dependency resolves against that local checkout
-during `npm install` or Bun installs. No separate npm publication is required.
+during `npm install` or Bun installs.
 
 Library maintainers should follow [Releasing](releasing.md) for the local
 artifact dry run, tag contract, protected environment, and Hex publication

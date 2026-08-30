@@ -3,10 +3,7 @@
 LiveViewReact is distributed as a Hex package that also contains its browser
 and SSR runtime. Its Igniter installer configures a Phoenix application,
 PhoenixVite, React, TypeScript, development SSR, and a file-based component
-registry together. On the asset side it adds `liveview_react` as a local
-`file:` dependency pointing at `deps/liveview_react`, so the Phoenix app
-consumes the code unpacked by Mix instead of downloading a separate npm
-release.
+registry together.
 
 Use the installer from a clean branch so its PhoenixVite asset-stack changes
 are easy to review.

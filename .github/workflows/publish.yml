@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish liveview_react to Hex and npm after all dry-run checks pass
+        description: Publish liveview_react to Hex after all dry-run checks pass
         required: true
         type: boolean
         default: false
@@ -51,9 +51,6 @@ jobs:
           npm ci
           npm run quality:ci
           mix hex.publish --dry-run --yes
-
-      - name: Exercise npm publish in dry-run mode
-        run: npm publish --dry-run --access public --ignore-scripts
 
   browser-e2e:
     name: Example build and instrumented browser E2E
@@ -113,7 +110,6 @@ jobs:
     environment: release
     permissions:
       contents: read
-      id-token: write
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,7 +127,6 @@ jobs:
         with:
           node-version: 24.20.0
           cache: npm
-          registry-url: https://registry.npmjs.org
 
       - name: Install Mix dependencies
         run: mix deps.get
@@ -145,13 +140,13 @@ jobs:
       - name: Lint JavaScript sources
         run: npm run lint
 
-      - name: Check npm package types
+      - name: Check JavaScript runtime types
         run: npm run typecheck
 
-      - name: Test npm package
+      - name: Test JavaScript runtime
         run: npm test
 
-      - name: Build npm package
+      - name: Build bundled JavaScript runtime
         run: npm run build
 
       - name: Verify release metadata and synchronized version
@@ -167,15 +162,10 @@ jobs:
           test "$GITHUB_REF" = "$expected_tag"
           test "$GITHUB_REPOSITORY" = "$LIVEVIEW_REACT_RELEASE_REPOSITORY"
 
-      - name: Check registry release state
+      - name: Check Hex release state
         id: registry-state
         run: |
           package_version="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")"
-          if npm view "liveview_react@${package_version}" version >/dev/null 2>&1; then
-            echo "npm_exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "npm_exists=false" >> "$GITHUB_OUTPUT"
-          fi
           if mix hex.package fetch liveview_react "$package_version" --output "$RUNNER_TEMP/liveview_react-${package_version}.tar" >/dev/null 2>&1; then
             echo "hex_exists=true" >> "$GITHUB_OUTPUT"
           else
@@ -187,9 +177,3 @@ jobs:
         env:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
         run: mix hex.publish --yes
-
-      - name: Publish npm package
-        if: steps.registry-state.outputs.npm_exists != 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance --access public

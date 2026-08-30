@@ -19,10 +19,9 @@ Oxfmt/Oxlint/typecheck/test path and `npm run quality:ci` extends it with
 package assembly plus a dependency audit. Oxlint runs its TypeScript 7-aware
 semantic rules through `oxlint-tsgolint`.
 
-The example application lives in `liveview_react_examples`. Its npm dependency
-points at the repository root, so no separate registry package is involved;
-install the root dependencies before installing or building the example
-assets.
+The example application lives in `liveview_react_examples`. Its package
+dependency points at the repository root, so install the root dependencies
+before installing or building the example assets.
 
 ```sh
 npm ci
