@@ -6,6 +6,7 @@ defmodule LiveViewReact.EventsTest do
   import Phoenix.LiveViewTest
 
   alias LiveViewReact.Test
+  alias Phoenix.HTML.Safe, as: HTMLSafe
   alias Phoenix.LiveView.JS
   alias Phoenix.LiveView.Socket
 
@@ -108,7 +109,7 @@ defmodule LiveViewReact.EventsTest do
         extra_assigns
       )
     )
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> HTMLSafe.to_iodata()
     |> IO.iodata_to_binary()
   end
 

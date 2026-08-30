@@ -3,8 +3,8 @@ defmodule LiveViewReact.SSR.NodeJS do
   Implements SSR by using `NodeJS` package.
 
   It invokes the `render` export from the configured ESM server bundle with one
-  request object containing `component`, `identifierPrefix`, `props`, and
-  `slots`.
+  request object containing `component`, `events`, `identifierPrefix`, `props`,
+  and `slots`.
   """
 
   @behaviour LiveViewReact.SSR

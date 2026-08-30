@@ -72,54 +72,68 @@ defmodule LiveViewReact.Installer.TypeScriptConfig do
   defp ensure_compiler_option(source, {key, desired, compatibility}) do
     with {:ok, root} <- parse_root(source),
          {:ok, compiler} <- JSONC.fetch(root, ["compilerOptions"]) do
-      case JSONC.fetch(compiler, [key]) do
-        :error ->
-          JSONC.insert_property(source, compiler, key, Jason.encode!(desired))
-
-        {:ok, node} ->
-          current = JSONC.term(node)
-
-          if compatible?(compatibility, current) do
-            {:ok, source}
-          else
-            {:error,
-             "assets/tsconfig.json compilerOptions.#{key} is #{inspect(current)}; " <>
-               "expected a setting compatible with #{inspect(desired)}"}
-          end
-
-        {:error, message} ->
-          {:error, message}
-      end
+      ensure_existing_compiler_option(source, compiler, key, desired, compatibility)
     end
   end
 
   defp ensure_array_value(source, parent_path, key, desired) do
     with {:ok, root} <- parse_root(source),
          {:ok, parent} <- JSONC.fetch(root, parent_path) do
-      case JSONC.fetch(parent, [key]) do
-        :error ->
-          JSONC.insert_property(source, parent, key, Jason.encode!([desired]))
+      ensure_existing_array_value(source, parent, key, desired)
+    end
+  end
 
-        {:ok, %{kind: :array} = array} ->
-          values = JSONC.term(array)
+  defp ensure_existing_compiler_option(source, compiler, key, desired, compatibility) do
+    case JSONC.fetch(compiler, [key]) do
+      :error ->
+        JSONC.insert_property(source, compiler, key, Jason.encode!(desired))
 
-          cond do
-            not Enum.all?(values, &is_binary/1) ->
-              {:error, "assets/tsconfig.json #{key} must contain only strings"}
+      {:ok, node} ->
+        verify_compiler_option(source, key, desired, compatibility, JSONC.term(node))
 
-            desired in values ->
-              {:ok, source}
+      {:error, message} ->
+        {:error, message}
+    end
+  end
 
-            true ->
-              JSONC.append_array_string(source, array, desired)
-          end
+  defp verify_compiler_option(source, key, desired, compatibility, current) do
+    if compatible?(compatibility, current) do
+      {:ok, source}
+    else
+      {:error,
+       "assets/tsconfig.json compilerOptions.#{key} is #{inspect(current)}; " <>
+         "expected a setting compatible with #{inspect(desired)}"}
+    end
+  end
 
-        {:ok, _node} ->
-          {:error, "assets/tsconfig.json #{key} must be an array"}
+  defp ensure_existing_array_value(source, parent, key, desired) do
+    case JSONC.fetch(parent, [key]) do
+      :error ->
+        JSONC.insert_property(source, parent, key, Jason.encode!([desired]))
 
-        {:error, message} ->
-          {:error, message}
-      end
+      {:ok, %{kind: :array} = array} ->
+        merge_array_value(source, array, key, desired)
+
+      {:ok, _node} ->
+        {:error, "assets/tsconfig.json #{key} must be an array"}
+
+      {:error, message} ->
+        {:error, message}
+    end
+  end
+
+  defp merge_array_value(source, array, key, desired) do
+    values = JSONC.term(array)
+
+    cond do
+      not Enum.all?(values, &is_binary/1) ->
+        {:error, "assets/tsconfig.json #{key} must contain only strings"}
+
+      desired in values ->
+        {:ok, source}
+
+      true ->
+        JSONC.append_array_string(source, array, desired)
     end
   end
 

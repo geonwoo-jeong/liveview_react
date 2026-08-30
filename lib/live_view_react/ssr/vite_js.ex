@@ -19,6 +19,7 @@ defmodule LiveViewReact.SSR.ViteJS do
     plugins: [react(), liveViewReactPlugin()],
     // ...
   }
+  ```
   """
 
   @behaviour LiveViewReact.SSR

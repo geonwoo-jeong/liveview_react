@@ -2,11 +2,15 @@ if Code.ensure_loaded?(Igniter) do
   defmodule LiveViewReact.Igniter do
     @moduledoc false
 
+    alias Igniter.Libs.Phoenix, as: IgniterPhoenix
+    alias Igniter.Project.Config, as: IgniterConfig
     alias LiveViewReact.Installer.Elixir, as: ElixirInstaller
     alias LiveViewReact.Installer.JavaScript
     alias LiveViewReact.Installer.PackageJSON
     alias LiveViewReact.Installer.Templates
     alias LiveViewReact.Installer.TypeScriptConfig
+    alias Rewrite.Source
+    alias Sourceror.Zipper
 
     @owned_files [
       {"assets/js/liveview_react.ts", :client_entrypoint},
@@ -19,20 +23,22 @@ if Code.ensure_loaded?(Igniter) do
     def install(igniter, opts \\ []) do
       demo? = Keyword.get(opts, :demo, true)
 
-      with {:ok, igniter, router, _endpoint, web_module} <- select_phoenix_modules(igniter) do
-        igniter
-        |> update_package_json()
-        |> update_typescript_config()
-        |> create_owned_files(@owned_files)
-        |> maybe_create_demo_component(demo?)
-        |> update_app_javascript()
-        |> update_vite_config()
-        |> configure_development_ssr()
-        |> ElixirInstaller.ensure_html_import(web_module)
-        |> maybe_install_demo(demo?, router, web_module)
-        |> add_post_install_notices(demo?)
-      else
-        {:error, igniter, message} -> Igniter.add_issue(igniter, message)
+      case select_phoenix_modules(igniter) do
+        {:ok, igniter, router, _endpoint, web_module} ->
+          igniter
+          |> update_package_json()
+          |> update_typescript_config()
+          |> create_owned_files(@owned_files)
+          |> maybe_create_demo_component(demo?)
+          |> update_app_javascript()
+          |> update_vite_config()
+          |> configure_development_ssr()
+          |> ElixirInstaller.ensure_html_import(web_module)
+          |> maybe_install_demo(demo?, router, web_module)
+          |> add_post_install_notices(demo?)
+
+        {:error, igniter, message} ->
+          Igniter.add_issue(igniter, message)
       end
     end
 
@@ -40,13 +46,13 @@ if Code.ensure_loaded?(Igniter) do
     def supports_umbrella?, do: false
 
     defp select_phoenix_modules(igniter) do
-      {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
+      {igniter, router} = IgniterPhoenix.select_router(igniter)
 
       if is_nil(router) do
         {:error, igniter, "LiveViewReact requires a Phoenix router in the selected application"}
       else
-        {igniter, web_module} = Igniter.Libs.Phoenix.web_module_for_router(igniter, router)
-        {igniter, endpoint} = Igniter.Libs.Phoenix.select_endpoint(igniter, router)
+        {igniter, web_module} = IgniterPhoenix.web_module_for_router(igniter, router)
+        {igniter, endpoint} = IgniterPhoenix.select_endpoint(igniter, router)
 
         if is_nil(endpoint) do
           {:error, igniter,
@@ -87,71 +93,53 @@ if Code.ensure_loaded?(Igniter) do
     defp maybe_create_demo_component(igniter, false), do: igniter
 
     defp ensure_owned_file(igniter, path, desired) do
-      if Igniter.exists?(igniter, path) do
-        igniter = Igniter.include_existing_file(igniter, path, required?: true)
+      case Igniter.exists?(igniter, path) do
+        true ->
+          igniter
+          |> Igniter.include_existing_file(path, required?: true)
+          |> keep_owned_file(path, desired)
 
-        case Rewrite.source(igniter.rewrite, path) do
-          {:ok, source} ->
-            if Rewrite.Source.get(source, :content) == desired do
-              igniter
-            else
-              Igniter.add_issue(
-                igniter,
-                "Refusing to overwrite #{path}; it is not the LiveViewReact-owned template"
-              )
-            end
-
-          {:error, _error} ->
-            Igniter.add_issue(igniter, "Could not read required file #{path}")
-        end
-      else
-        Igniter.create_new_file(igniter, path, desired)
+        false ->
+          Igniter.create_new_file(igniter, path, desired)
       end
     end
 
     defp update_app_javascript(igniter) do
       update_required_file(igniter, "assets/js/app.js", fn source ->
-        with {:ok, source} <-
-               JavaScript.ensure_import(
-                 source,
-                 ~s(import { liveViewReact } from "./liveview_react";),
-                 "./liveview_react"
-               ),
-             {:ok, source} <- JavaScript.merge_live_socket_hooks(source, "liveViewReact.hooks") do
-          {:ok, source}
-        end
+        source
+        |> JavaScript.ensure_import(
+          ~s(import { liveViewReact } from "./liveview_react";),
+          "./liveview_react"
+        )
+        |> then(&merge_live_socket_hooks_result(&1, "liveViewReact.hooks"))
       end)
     end
 
     defp update_vite_config(igniter) do
       update_required_file(igniter, "assets/vite.config.mjs", fn source ->
-        with {:ok, source} <-
-               JavaScript.ensure_vite_plugin(
-                 source,
-                 ~s(import react from "@vitejs/plugin-react";),
-                 "@vitejs/plugin-react",
-                 "react()"
-               ),
-             {:ok, source} <-
-               JavaScript.ensure_vite_plugin(
-                 source,
-                 ~s(import liveViewReactPlugin from "liveview_react/vite";),
-                 "liveview_react/vite",
-                 ~s|liveViewReactPlugin({ entrypoint: "./js/liveview_react_server.tsx" })|
-               ) do
-          {:ok, source}
-        end
+        source
+        |> JavaScript.ensure_vite_plugin(
+          ~s(import react from "@vitejs/plugin-react";),
+          "@vitejs/plugin-react",
+          "react()"
+        )
+        |> then(
+          &ensure_liveview_react_vite_plugin(
+            &1,
+            ~s(import liveViewReactPlugin from "liveview_react/vite";),
+            "liveview_react/vite",
+            ~s|liveViewReactPlugin({ entrypoint: "./js/liveview_react_server.tsx" })|
+          )
+        )
       end)
     end
 
     defp update_required_file(igniter, path, updater) do
       Igniter.update_file(igniter, path, fn source ->
-        current = Rewrite.Source.get(source, :content)
-
-        case updater.(current) do
-          {:ok, updated} -> Rewrite.Source.update(source, :content, fn _content -> updated end)
-          {:error, errors} -> {:error, List.wrap(errors)}
-        end
+        source
+        |> Source.get(:content)
+        |> updater.()
+        |> apply_updated_source(source)
       end)
     end
 
@@ -171,14 +159,14 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp configure_exact(igniter, key, value, expected_ast) do
-      Igniter.Project.Config.configure(
+      IgniterConfig.configure(
         igniter,
         "dev.exs",
         :liveview_react,
         [key],
         value,
         updater: fn zipper ->
-          if config_values_equal?(Sourceror.Zipper.node(zipper), expected_ast) do
+          if config_values_equal?(Zipper.node(zipper), expected_ast) do
             {:ok, zipper}
           else
             {:error,
@@ -225,5 +213,54 @@ if Code.ensure_loaded?(Igniter) do
       do: Igniter.add_notice(igniter, "The demo is available at `/liveview-react`.")
 
     defp maybe_add_demo_notice(igniter, false), do: igniter
+
+    defp keep_owned_file(igniter, path, desired) do
+      case Rewrite.source(igniter.rewrite, path) do
+        {:ok, source} ->
+          keep_owned_source(igniter, path, desired, source)
+
+        {:error, _error} ->
+          Igniter.add_issue(igniter, "Could not read required file #{path}")
+      end
+    end
+
+    defp keep_owned_source(igniter, path, desired, source) do
+      case Source.get(source, :content) do
+        ^desired ->
+          igniter
+
+        _current ->
+          Igniter.add_issue(
+            igniter,
+            "Refusing to overwrite #{path}; it is not the LiveViewReact-owned template"
+          )
+      end
+    end
+
+    defp merge_live_socket_hooks_result({:ok, source}, hook_expression),
+      do: JavaScript.merge_live_socket_hooks(source, hook_expression)
+
+    defp merge_live_socket_hooks_result({:error, _message} = error, _hook_expression), do: error
+
+    defp ensure_liveview_react_vite_plugin(
+           {:ok, source},
+           statement,
+           module_specifier,
+           expression
+         ),
+         do: JavaScript.ensure_vite_plugin(source, statement, module_specifier, expression)
+
+    defp ensure_liveview_react_vite_plugin(
+           {:error, _message} = error,
+           _statement,
+           _module_specifier,
+           _expression
+         ),
+         do: error
+
+    defp apply_updated_source({:ok, updated}, source),
+      do: Source.update(source, :content, fn _content -> updated end)
+
+    defp apply_updated_source({:error, errors}, _source), do: {:error, List.wrap(errors)}
   end
 end

@@ -165,26 +165,7 @@ defmodule LiveViewReact.Installer.JavaScript do
     calls =
       tokens
       |> Enum.with_index()
-      |> Enum.reduce([], fn
-        {%Token{kind: :identifier, value: "new"}, index}, calls ->
-          case {Enum.at(tokens, index + 1), Enum.at(tokens, index + 2)} do
-            {%Token{kind: :identifier, value: "LiveSocket"}, %Token{value: "("}} ->
-              case Map.fetch(pairs, index + 2) do
-                {:ok, close_index} ->
-                  argument_count = max(close_index - index - 3, 0)
-                  [%{tokens: Enum.slice(tokens, index + 3, argument_count)} | calls]
-
-                :error ->
-                  calls
-              end
-
-            _other ->
-              calls
-          end
-
-        {_token, _index}, calls ->
-          calls
-      end)
+      |> Enum.reduce([], &collect_live_socket_call(&1, &2, tokens, pairs))
 
     case calls do
       [call] ->
@@ -250,17 +231,7 @@ defmodule LiveViewReact.Installer.JavaScript do
     with {:ok, members} <- Scanner.split_top_level(tokens) do
       members
       |> Enum.reject(&(&1 == []))
-      |> Enum.reduce_while({:ok, []}, fn member, {:ok, properties} ->
-        case parse_named_property(member, property_name) do
-          :other -> {:cont, {:ok, properties}}
-          {:ok, property} -> {:cont, {:ok, [property | properties]}}
-          {:error, message} -> {:halt, {:error, message}}
-        end
-      end)
-      |> case do
-        {:ok, properties} -> {:ok, Enum.reverse(properties)}
-        {:error, message} -> {:error, message}
-      end
+      |> collect_named_properties(property_name)
     end
   end
 
@@ -486,4 +457,56 @@ defmodule LiveViewReact.Installer.JavaScript do
       _part -> parts
     end
   end
+
+  defp collect_live_socket_call(
+         {%Token{kind: :identifier, value: "new"}, index},
+         calls,
+         tokens,
+         pairs
+       ) do
+    case live_socket_call_tokens(tokens, pairs, index) do
+      {:ok, call} -> [call | calls]
+      :error -> calls
+    end
+  end
+
+  defp collect_live_socket_call({_token, _index}, calls, _tokens, _pairs), do: calls
+
+  defp live_socket_call_tokens(tokens, pairs, index) do
+    case {Enum.at(tokens, index + 1), Enum.at(tokens, index + 2)} do
+      {%Token{kind: :identifier, value: "LiveSocket"}, %Token{value: "("}} ->
+        build_live_socket_call(tokens, pairs, index)
+
+      _other ->
+        :error
+    end
+  end
+
+  defp build_live_socket_call(tokens, pairs, index) do
+    case Map.fetch(pairs, index + 2) do
+      {:ok, close_index} ->
+        argument_count = max(close_index - index - 3, 0)
+        {:ok, %{tokens: Enum.slice(tokens, index + 3, argument_count)}}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp collect_named_properties(members, property_name) do
+    members
+    |> Enum.reduce_while({:ok, []}, &collect_named_property(&1, &2, property_name))
+    |> finalize_named_properties()
+  end
+
+  defp collect_named_property(member, {:ok, properties}, property_name) do
+    case parse_named_property(member, property_name) do
+      :other -> {:cont, {:ok, properties}}
+      {:ok, property} -> {:cont, {:ok, [property | properties]}}
+      {:error, message} -> {:halt, {:error, message}}
+    end
+  end
+
+  defp finalize_named_properties({:ok, properties}), do: {:ok, Enum.reverse(properties)}
+  defp finalize_named_properties({:error, message}), do: {:error, message}
 end

@@ -87,26 +87,10 @@ if Code.ensure_loaded?(Igniter) do
     defp html_helpers_definition?(_node), do: false
 
     defp update_html_helpers(%Zipper{node: helper_node} = helper) do
-      with {:ok, quote_node} <- helper_quote(helper_node),
-           imports = live_view_react_imports(quote_node) do
-        case imports do
-          [] ->
-            updated_helper = put_import_in_helper(helper_node)
-            {:ok, Common.replace_code(helper, updated_helper)}
+      case helper_quote(helper_node) do
+        {:ok, quote_node} ->
+          apply_html_import_update(helper, helper_node, live_view_react_imports(quote_node))
 
-          [{:import, _, [_module]}] ->
-            {:ok, helper}
-
-          [_restricted] ->
-            {:error,
-             "The selected Phoenix html_helpers/0 already imports LiveViewReact with options; " <>
-               "refusing to change its import contract"}
-
-          _duplicates ->
-            {:error,
-             "The selected Phoenix html_helpers/0 contains duplicate LiveViewReact imports"}
-        end
-      else
         :error ->
           {:error,
            "Could not find the quoted html helper body in the selected Phoenix web module"}
@@ -157,20 +141,7 @@ if Code.ensure_loaded?(Igniter) do
       scopes = Common.find_all(zipper, &browser_root_scope?/1)
 
       with {:ok, scope} <- select_browser_scope(scopes) do
-        case routes do
-          [] ->
-            add_route_to_browser_scope(scope, demo_module)
-
-          [route] ->
-            if desired_demo_route?(route.node, demo_module, scope.node) do
-              {:ok, zipper}
-            else
-              {:error, "The selected router already has a conflicting /liveview-react route"}
-            end
-
-          _multiple ->
-            {:error, "The selected router contains duplicate /liveview-react routes"}
-        end
+        update_demo_route(zipper, routes, scope, demo_module)
       end
     end
 
@@ -344,6 +315,37 @@ if Code.ensure_loaded?(Igniter) do
     defp module_ast?({:__aliases__, _, parts}, module), do: Module.concat(parts) == module
     defp module_ast?(module, module) when is_atom(module), do: true
     defp module_ast?(_ast, _module), do: false
+
+    defp apply_html_import_update(helper, helper_node, []) do
+      updated_helper = put_import_in_helper(helper_node)
+      {:ok, Common.replace_code(helper, updated_helper)}
+    end
+
+    defp apply_html_import_update(helper, _helper_node, [{:import, _, [_module]}]),
+      do: {:ok, helper}
+
+    defp apply_html_import_update(_helper, _helper_node, [_restricted]) do
+      {:error,
+       "The selected Phoenix html_helpers/0 already imports LiveViewReact with options; " <>
+         "refusing to change its import contract"}
+    end
+
+    defp apply_html_import_update(_helper, _helper_node, _duplicates) do
+      {:error, "The selected Phoenix html_helpers/0 contains duplicate LiveViewReact imports"}
+    end
+
+    defp update_demo_route(_zipper, [], scope, demo_module),
+      do: add_route_to_browser_scope(scope, demo_module)
+
+    defp update_demo_route(zipper, [route], scope, demo_module) do
+      case desired_demo_route?(route.node, demo_module, scope.node) do
+        true -> {:ok, zipper}
+        false -> {:error, "The selected router already has a conflicting /liveview-react route"}
+      end
+    end
+
+    defp update_demo_route(_zipper, _routes, _scope, _demo_module),
+      do: {:error, "The selected router contains duplicate /liveview-react routes"}
 
     defp fetch_keyword(keyword, key) do
       Enum.find_value(keyword, :error, fn

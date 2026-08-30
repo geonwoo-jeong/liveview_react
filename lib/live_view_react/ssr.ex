@@ -40,36 +40,54 @@ defmodule LiveViewReact.SSR do
   @callback render(request) :: binary() | no_return
 
   @spec render(request) :: render_response | no_return
-  def render(
-        %{
-          component: component,
-          events: events,
-          identifierPrefix: identifier_prefix,
-          props: props,
-          slots: slots
-        } = request
-      )
-      when map_size(request) == 5 and is_binary(component) and component != "" and
-             is_map(events) and is_binary(identifier_prefix) and identifier_prefix != "" and
-             is_map(props) and is_map(slots) do
-    case Application.get_env(:liveview_react, :ssr_module, nil) do
-      nil ->
-        raise LiveViewReact.SSR.NotConfigured
+  def render(request) do
+    case normalize_request(request) do
+      {:ok, normalized_request} ->
+        render_with_configured_module(normalized_request)
 
-      mod ->
-        metadata = %{component: component}
-
-        :telemetry.span([:liveview_react, :ssr], metadata, fn ->
-          {mod.render(request), metadata}
-        end)
-        |> parse_render_body()
+      :error ->
+        raise LiveViewReact.SSR.RenderError,
+          message:
+            "Invalid SSR render request: expected component, events, identifierPrefix, props, and slots"
     end
   end
 
-  def render(_request) do
-    raise LiveViewReact.SSR.RenderError,
-      message:
-        "Invalid SSR render request: expected component, events, identifierPrefix, props, and slots"
+  defp normalize_request(
+         %{
+           component: component,
+           events: events,
+           identifierPrefix: identifier_prefix,
+           props: props,
+           slots: slots
+         } = request
+       )
+       when map_size(request) == 5 do
+    case valid_request_fields?(component, events, identifier_prefix, props, slots) do
+      true -> {:ok, request}
+      false -> :error
+    end
+  end
+
+  defp normalize_request(_request), do: :error
+
+  defp valid_request_fields?(component, events, identifier_prefix, props, slots) do
+    is_binary(component) and component != "" and
+      is_map(events) and is_binary(identifier_prefix) and identifier_prefix != "" and
+      is_map(props) and is_map(slots)
+  end
+
+  defp render_with_configured_module(%{component: component} = request) do
+    case Application.get_env(:liveview_react, :ssr_module, nil) do
+      nil -> raise LiveViewReact.SSR.NotConfigured
+      mod -> perform_render(mod, request, %{component: component})
+    end
+  end
+
+  defp perform_render(mod, request, metadata) do
+    :telemetry.span([:liveview_react, :ssr], metadata, fn ->
+      {mod.render(request), metadata}
+    end)
+    |> parse_render_body()
   end
 
   defp parse_render_body(body) when is_binary(body), do: %{html: body}

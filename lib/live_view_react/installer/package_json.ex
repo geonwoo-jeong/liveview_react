@@ -72,36 +72,75 @@ defmodule LiveViewReact.Installer.PackageJSON do
   end
 
   defp merge_package(package, preferred_section, {name, desired, compatibility}) do
-    locations =
-      ["dependencies", "devDependencies"]
-      |> Enum.flat_map(fn section ->
-        case get_in(package, [section, name]) do
-          nil -> []
-          value -> [{section, value}]
-        end
-      end)
+    package
+    |> dependency_locations(name)
+    |> merge_dependency_locations(package, preferred_section, name, desired, compatibility)
+  end
 
-    case locations do
-      [] ->
-        {:ok, put_dependency(package, preferred_section, name, desired)}
+  defp dependency_locations(package, name) do
+    Enum.flat_map(["dependencies", "devDependencies"], fn section ->
+      case get_in(package, [section, name]) do
+        nil -> []
+        value -> [{section, value}]
+      end
+    end)
+  end
 
-      [{section, @phoenix_vite_generated_version}]
-      when name == "vite" and desired == "^8.0.0" ->
-        {:ok, put_dependency(package, section, name, desired)}
+  defp merge_dependency_locations([], package, preferred_section, name, desired, _compatibility) do
+    {:ok, put_dependency(package, preferred_section, name, desired)}
+  end
 
-      [{_section, current}] when not is_binary(current) ->
-        {:error, dependency_error(name, current, desired)}
+  defp merge_dependency_locations(
+         [{section, @phoenix_vite_generated_version}],
+         package,
+         _preferred_section,
+         "vite",
+         "^8.0.0",
+         _compatibility
+       ) do
+    {:ok, put_dependency(package, section, "vite", "^8.0.0")}
+  end
 
-      [{_section, current}] ->
-        if compatible?(current, compatibility) do
-          {:ok, package}
-        else
-          {:error, dependency_error(name, current, desired)}
-        end
+  defp merge_dependency_locations(
+         [{_section, current}],
+         _package,
+         _preferred_section,
+         name,
+         desired,
+         _compatibility
+       )
+       when not is_binary(current) do
+    {:error, dependency_error(name, current, desired)}
+  end
 
-      _duplicates ->
-        {:error,
-         "assets/package.json declares #{inspect(name)} in both dependencies and devDependencies"}
+  defp merge_dependency_locations(
+         [{_section, current}],
+         package,
+         _preferred_section,
+         name,
+         desired,
+         compatibility
+       ) do
+    verify_compatible_dependency(package, name, desired, compatibility, current)
+  end
+
+  defp merge_dependency_locations(
+         _locations,
+         _package,
+         _preferred_section,
+         name,
+         _desired,
+         _compatibility
+       ) do
+    {:error,
+     "assets/package.json declares #{inspect(name)} in both dependencies and devDependencies"}
+  end
+
+  defp verify_compatible_dependency(package, name, desired, compatibility, current) do
+    if compatible?(current, compatibility) do
+      {:ok, package}
+    else
+      {:error, dependency_error(name, current, desired)}
     end
   end
 

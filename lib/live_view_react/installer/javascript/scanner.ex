@@ -15,6 +15,40 @@ defmodule LiveViewReact.Installer.JavaScript.Scanner do
           stop: non_neg_integer()
         }
 
+  @multi_char_punctuation ~w(
+    >>>=
+    ===
+    !==
+    **=
+    &&=
+    ||=
+    ??=
+    >>>
+    ...
+    =>
+    ==
+    !=
+    <=
+    >=
+    ++
+    --
+    &&
+    ||
+    ??
+    **
+    +=
+    -=
+    *=
+    /=
+    %=
+    &=
+    |=
+    ^=
+    <<=
+    >>=
+    ?.
+  )
+
   @spec scan(binary()) :: {:ok, [token()]} | {:error, binary()}
   def scan(source) when is_binary(source) do
     cond do
@@ -68,107 +102,161 @@ defmodule LiveViewReact.Installer.JavaScript.Scanner do
   @spec split_top_level([token()]) :: {:ok, [[token()]]} | {:error, binary()}
   def split_top_level(tokens) do
     tokens
-    |> Enum.reduce_while({[], [], []}, fn token, {parts, current, stack} ->
-      case token.value do
-        opening when opening in ["(", "[", "{"] ->
-          {:cont, {parts, [token | current], [opening | stack]}}
-
-        closing when closing in [")", "]", "}"] ->
-          case stack do
-            [opening | rest] ->
-              if matching_delimiters?(opening, closing) do
-                {:cont, {parts, [token | current], rest}}
-              else
-                {:halt,
-                 {:error,
-                  "mismatched JavaScript delimiters #{inspect(opening)} and #{inspect(closing)}"}}
-              end
-
-            [] ->
-              {:halt, {:error, "unexpected JavaScript delimiter #{inspect(closing)}"}}
-          end
-
-        "," when stack == [] ->
-          {:cont, {[Enum.reverse(current) | parts], [], stack}}
-
-        _other ->
-          {:cont, {parts, [token | current], stack}}
-      end
-    end)
-    |> case do
-      {:error, message} -> {:error, message}
-      {_parts, _current, [_opening | _rest]} -> {:error, "unclosed JavaScript delimiter"}
-      {parts, current, []} -> {:ok, Enum.reverse([Enum.reverse(current) | parts])}
-    end
+    |> Enum.reduce_while({[], [], []}, &split_top_level_token/2)
+    |> finalize_split_top_level()
   end
 
   defp scan(_source, size, offset, tokens, _previous) when offset >= size,
     do: {:ok, Enum.reverse(tokens)}
 
   defp scan(source, size, offset, tokens, previous) do
+    case next_scan_step(source, size, offset, previous) do
+      {:skip, next_offset} ->
+        scan(source, size, next_offset, tokens, previous)
+
+      {:emit, token, next_offset} ->
+        scan(source, size, next_offset, [token | tokens], token)
+
+      {:error, _message} = error ->
+        error
+    end
+  end
+
+  defp split_top_level_token(%Token{value: value} = token, {parts, current, stack})
+       when value in ["(", "[", "{"] do
+    {:cont, {parts, [token | current], [value | stack]}}
+  end
+
+  defp split_top_level_token(%Token{value: value} = token, {parts, current, stack})
+       when value in [")", "]", "}"] do
+    close_split_top_level(token, parts, current, stack)
+  end
+
+  defp split_top_level_token(%Token{value: ","}, {parts, current, []}),
+    do: {:cont, {[Enum.reverse(current) | parts], [], []}}
+
+  defp split_top_level_token(token, {parts, current, stack}),
+    do: {:cont, {parts, [token | current], stack}}
+
+  defp close_split_top_level(%Token{value: closing} = token, parts, current, [opening | rest]) do
+    if matching_delimiters?(opening, closing) do
+      {:cont, {parts, [token | current], rest}}
+    else
+      {:halt,
+       {:error, "mismatched JavaScript delimiters #{inspect(opening)} and #{inspect(closing)}"}}
+    end
+  end
+
+  defp close_split_top_level(%Token{value: closing}, _parts, _current, []),
+    do: {:halt, {:error, "unexpected JavaScript delimiter #{inspect(closing)}"}}
+
+  defp finalize_split_top_level({:error, message}), do: {:error, message}
+
+  defp finalize_split_top_level({_parts, _current, [_opening | _rest]}),
+    do: {:error, "unclosed JavaScript delimiter"}
+
+  defp finalize_split_top_level({parts, current, []}),
+    do: {:ok, Enum.reverse([Enum.reverse(current) | parts])}
+
+  defp next_scan_step(source, size, offset, previous) do
     byte = :binary.at(source, offset)
 
     cond do
       whitespace?(byte) ->
-        scan(source, size, offset + 1, tokens, previous)
+        {:skip, offset + 1}
 
       offset == 0 and starts_with?(source, offset, "#!") ->
-        scan(source, size, skip_line(source, size, offset + 2), tokens, previous)
+        {:skip, skip_line(source, size, offset + 2)}
 
       starts_with?(source, offset, "//") ->
-        scan(source, size, skip_line(source, size, offset + 2), tokens, previous)
+        {:skip, skip_line(source, size, offset + 2)}
 
       starts_with?(source, offset, "/*") ->
-        with {:ok, next_offset} <- skip_block_comment(source, size, offset + 2) do
-          scan(source, size, next_offset, tokens, previous)
-        end
-
-      byte in [?\", ?'] ->
-        with {:ok, next_offset} <- skip_quoted(source, size, offset + 1, byte) do
-          value = binary_part(source, offset + 1, next_offset - offset - 2)
-          token = %Token{kind: :string, value: value, start: offset, stop: next_offset}
-          scan(source, size, next_offset, [token | tokens], token)
-        end
-
-      byte == ?` ->
-        with {:ok, next_offset} <- skip_template(source, size, offset + 1) do
-          value = binary_part(source, offset, next_offset - offset)
-          token = %Token{kind: :template, value: value, start: offset, stop: next_offset}
-          scan(source, size, next_offset, [token | tokens], token)
-        end
-
-      byte == ?/ and regex_start?(previous) ->
-        with {:ok, next_offset} <- skip_regex(source, size, offset + 1, false) do
-          value = binary_part(source, offset, next_offset - offset)
-          token = %Token{kind: :regex, value: value, start: offset, stop: next_offset}
-          scan(source, size, next_offset, [token | tokens], token)
-        end
-
-      identifier_start?(byte) ->
-        next_offset = take_while(source, size, offset + 1, &identifier_continue?/1)
-        value = binary_part(source, offset, next_offset - offset)
-        token = %Token{kind: :identifier, value: value, start: offset, stop: next_offset}
-        scan(source, size, next_offset, [token | tokens], token)
-
-      digit?(byte) ->
-        next_offset = take_while(source, size, offset + 1, &number_continue?/1)
-        value = binary_part(source, offset, next_offset - offset)
-        token = %Token{kind: :number, value: value, start: offset, stop: next_offset}
-        scan(source, size, next_offset, [token | tokens], token)
+        next_block_comment_step(source, size, offset)
 
       true ->
-        {value, next_offset} = punctuation(source, size, offset)
-
-        token = %Token{
-          kind: :punctuation,
-          value: value,
-          start: offset,
-          stop: next_offset
-        }
-
-        scan(source, size, next_offset, [token | tokens], token)
+        next_significant_scan_step(source, size, offset, previous, byte)
     end
   end
+
+  defp next_block_comment_step(source, size, offset) do
+    case skip_block_comment(source, size, offset + 2) do
+      {:ok, next_offset} -> {:skip, next_offset}
+      {:error, _message} = error -> error
+    end
+  end
+
+  defp next_significant_scan_step(source, size, offset, previous, byte) do
+    cond do
+      byte in [?\", ?'] ->
+        emit_string_step(source, size, offset, byte)
+
+      byte == ?` ->
+        emit_template_step(source, size, offset)
+
+      byte == ?/ and regex_start?(previous) ->
+        emit_regex_step(source, size, offset)
+
+      identifier_start?(byte) ->
+        emit_identifier_step(source, size, offset)
+
+      digit?(byte) ->
+        emit_number_step(source, size, offset)
+
+      true ->
+        emit_punctuation_step(source, size, offset)
+    end
+  end
+
+  defp emit_string_step(source, size, offset, quote) do
+    with {:ok, next_offset} <- skip_quoted(source, size, offset + 1, quote) do
+      value = binary_part(source, offset + 1, next_offset - offset - 2)
+      token = %Token{kind: :string, value: value, start: offset, stop: next_offset}
+      {:emit, token, next_offset}
+    end
+  end
+
+  defp emit_template_step(source, size, offset) do
+    with {:ok, next_offset} <- skip_template(source, size, offset + 1) do
+      value = binary_part(source, offset, next_offset - offset)
+      token = %Token{kind: :template, value: value, start: offset, stop: next_offset}
+      {:emit, token, next_offset}
+    end
+  end
+
+  defp emit_regex_step(source, size, offset) do
+    with {:ok, next_offset} <- skip_regex(source, size, offset + 1, false) do
+      value = binary_part(source, offset, next_offset - offset)
+      token = %Token{kind: :regex, value: value, start: offset, stop: next_offset}
+      {:emit, token, next_offset}
+    end
+  end
+
+  defp emit_punctuation_step(source, size, offset) do
+    {value, next_offset} = punctuation(source, size, offset)
+    token = %Token{kind: :punctuation, value: value, start: offset, stop: next_offset}
+    {:emit, token, next_offset}
+  end
+
+  defp emit_identifier_step(source, size, offset) do
+    next_offset = identifier_stop(source, size, offset)
+    value = binary_part(source, offset, next_offset - offset)
+    token = %Token{kind: :identifier, value: value, start: offset, stop: next_offset}
+    {:emit, token, next_offset}
+  end
+
+  defp identifier_stop(source, size, offset),
+    do: take_while(source, size, offset + 1, &identifier_continue?/1)
+
+  defp emit_number_step(source, size, offset) do
+    next_offset = number_stop(source, size, offset)
+    value = binary_part(source, offset, next_offset - offset)
+    token = %Token{kind: :number, value: value, start: offset, stop: next_offset}
+    {:emit, token, next_offset}
+  end
+
+  defp number_stop(source, size, offset),
+    do: take_while(source, size, offset + 1, &number_continue?/1)
 
   defp close_delimiter([{opening, opening_index} | rest], pairs, closing, closing_index) do
     if matching_delimiters?(opening, closing) do
@@ -246,61 +334,15 @@ defmodule LiveViewReact.Installer.JavaScript.Scanner do
        do: {:error, "unclosed JavaScript template interpolation"}
 
   defp skip_template_expression(source, size, offset, depth, regex_allowed) do
-    byte = :binary.at(source, offset)
+    case template_expression_step(source, size, offset, depth, regex_allowed) do
+      {:continue, next_offset, next_depth, next_regex_allowed} ->
+        skip_template_expression(source, size, next_offset, next_depth, next_regex_allowed)
 
-    cond do
-      whitespace?(byte) ->
-        skip_template_expression(source, size, offset + 1, depth, regex_allowed)
+      {:ok, _next_offset} = success ->
+        success
 
-      starts_with?(source, offset, "//") ->
-        next_offset = skip_line(source, size, offset + 2)
-        skip_template_expression(source, size, next_offset, depth, regex_allowed)
-
-      starts_with?(source, offset, "/*") ->
-        with {:ok, next_offset} <- skip_block_comment(source, size, offset + 2) do
-          skip_template_expression(source, size, next_offset, depth, regex_allowed)
-        end
-
-      byte in [?\", ?'] ->
-        with {:ok, next_offset} <- skip_quoted(source, size, offset + 1, byte) do
-          skip_template_expression(source, size, next_offset, depth, false)
-        end
-
-      byte == ?` ->
-        with {:ok, next_offset} <- skip_template(source, size, offset + 1) do
-          skip_template_expression(source, size, next_offset, depth, false)
-        end
-
-      byte == ?{ ->
-        skip_template_expression(source, size, offset + 1, depth + 1, true)
-
-      byte == ?} and depth == 1 ->
-        {:ok, offset + 1}
-
-      byte == ?} ->
-        skip_template_expression(source, size, offset + 1, depth - 1, false)
-
-      byte == ?/ and regex_allowed ->
-        with {:ok, next_offset} <- skip_regex(source, size, offset + 1, false) do
-          skip_template_expression(source, size, next_offset, depth, false)
-        end
-
-      byte == ?/ ->
-        skip_template_expression(source, size, offset + 1, depth, true)
-
-      identifier_start?(byte) ->
-        next_offset = take_while(source, size, offset + 1, &identifier_continue?/1)
-        skip_template_expression(source, size, next_offset, depth, false)
-
-      digit?(byte) ->
-        next_offset = take_while(source, size, offset + 1, &number_continue?/1)
-        skip_template_expression(source, size, next_offset, depth, false)
-
-      byte in [?), ?]] ->
-        skip_template_expression(source, size, offset + 1, depth, false)
-
-      true ->
-        skip_template_expression(source, size, offset + 1, depth, true)
+      {:error, _message} = error ->
+        error
     end
   end
 
@@ -315,21 +357,10 @@ defmodule LiveViewReact.Installer.JavaScript.Scanner do
         {:error, "unclosed JavaScript regular expression literal"}
 
       byte == ?\\ ->
-        skip_escape(source, size, offset + 1, fn next_source, next_size, next_offset ->
-          skip_regex(next_source, next_size, next_offset, in_class)
-        end)
-
-      byte == ?[ and not in_class ->
-        skip_regex(source, size, offset + 1, true)
-
-      byte == ?] and in_class ->
-        skip_regex(source, size, offset + 1, false)
-
-      byte == ?/ and not in_class ->
-        {:ok, take_while(source, size, offset + 1, &identifier_continue?/1)}
+        skip_regex_escape(source, size, offset, in_class)
 
       true ->
-        skip_regex(source, size, offset + 1, in_class)
+        skip_regex_token(source, size, offset, in_class, byte)
     end
   end
 
@@ -377,16 +408,137 @@ defmodule LiveViewReact.Installer.JavaScript.Scanner do
       ]
 
   defp punctuation(source, size, offset) do
-    Enum.find_value([4, 3, 2], fn length ->
-      if offset + length <= size do
-        candidate = binary_part(source, offset, length)
-
-        if candidate in ~w(>>>= === !== **= &&= ||= ??= >>> ... => == != <= >= ++ -- && || ?? ** += -= *= /= %= &= |= ^= <<= >>= ?. ??) do
-          {candidate, offset + length}
-        end
-      end
-    end) || {binary_part(source, offset, 1), offset + 1}
+    case longest_punctuation(source, size, offset, [4, 3, 2]) do
+      nil -> {binary_part(source, offset, 1), offset + 1}
+      match -> match
+    end
   end
+
+  defp template_expression_step(source, size, offset, depth, regex_allowed) do
+    byte = :binary.at(source, offset)
+
+    cond do
+      whitespace?(byte) ->
+        {:continue, offset + 1, depth, regex_allowed}
+
+      starts_with?(source, offset, "//") ->
+        {:continue, skip_line(source, size, offset + 2), depth, regex_allowed}
+
+      starts_with?(source, offset, "/*") ->
+        continue_template_block_comment(source, size, offset, depth, regex_allowed)
+
+      true ->
+        template_expression_token_step(source, size, offset, depth, regex_allowed, byte)
+    end
+  end
+
+  defp continue_template_block_comment(source, size, offset, depth, regex_allowed) do
+    case skip_block_comment(source, size, offset + 2) do
+      {:ok, next_offset} -> {:continue, next_offset, depth, regex_allowed}
+      {:error, _message} = error -> error
+    end
+  end
+
+  defp template_expression_token_step(source, size, offset, depth, regex_allowed, byte) do
+    cond do
+      byte in [?\", ?'] ->
+        continue_template_quoted(source, size, offset, depth, byte)
+
+      byte == ?` ->
+        continue_nested_template(source, size, offset, depth)
+
+      byte in [?{, ?}] ->
+        continue_template_brace(offset, depth, byte)
+
+      byte == ?/ ->
+        continue_template_slash(source, size, offset, depth, regex_allowed)
+
+      true ->
+        continue_template_literal(source, size, offset, depth, byte)
+    end
+  end
+
+  defp continue_template_quoted(source, size, offset, depth, quote) do
+    with {:ok, next_offset} <- skip_quoted(source, size, offset + 1, quote) do
+      {:continue, next_offset, depth, false}
+    end
+  end
+
+  defp continue_nested_template(source, size, offset, depth) do
+    with {:ok, next_offset} <- skip_template(source, size, offset + 1) do
+      {:continue, next_offset, depth, false}
+    end
+  end
+
+  defp continue_template_brace(offset, depth, ?{),
+    do: {:continue, offset + 1, depth + 1, true}
+
+  defp continue_template_brace(offset, 1, ?}), do: {:ok, offset + 1}
+
+  defp continue_template_brace(offset, depth, ?}),
+    do: {:continue, offset + 1, depth - 1, false}
+
+  defp continue_template_slash(source, size, offset, depth, true) do
+    with {:ok, next_offset} <- skip_regex(source, size, offset + 1, false) do
+      {:continue, next_offset, depth, false}
+    end
+  end
+
+  defp continue_template_slash(_source, _size, offset, depth, false),
+    do: {:continue, offset + 1, depth, true}
+
+  defp continue_template_literal(source, size, offset, depth, byte) do
+    cond do
+      identifier_start?(byte) ->
+        {:continue, identifier_stop(source, size, offset), depth, false}
+
+      digit?(byte) ->
+        {:continue, number_stop(source, size, offset), depth, false}
+
+      byte in [?), ?]] ->
+        {:continue, offset + 1, depth, false}
+
+      true ->
+        {:continue, offset + 1, depth, true}
+    end
+  end
+
+  defp skip_regex_escape(source, size, offset, in_class) do
+    skip_escape(source, size, offset + 1, fn next_source, next_size, next_offset ->
+      skip_regex(next_source, next_size, next_offset, in_class)
+    end)
+  end
+
+  defp skip_regex_token(source, size, offset, false, ?[),
+    do: skip_regex(source, size, offset + 1, true)
+
+  defp skip_regex_token(source, size, offset, true, ?]),
+    do: skip_regex(source, size, offset + 1, false)
+
+  defp skip_regex_token(source, size, offset, false, ?/),
+    do: {:ok, take_while(source, size, offset + 1, &identifier_continue?/1)}
+
+  defp skip_regex_token(source, size, offset, in_class, _byte),
+    do: skip_regex(source, size, offset + 1, in_class)
+
+  defp longest_punctuation(_source, _size, _offset, []), do: nil
+
+  defp longest_punctuation(source, size, offset, [length | rest]) do
+    case punctuation_candidate(source, size, offset, length) do
+      nil -> longest_punctuation(source, size, offset, rest)
+      match -> match
+    end
+  end
+
+  defp punctuation_candidate(source, size, offset, length) when offset + length <= size do
+    candidate = binary_part(source, offset, length)
+
+    if candidate in @multi_char_punctuation do
+      {candidate, offset + length}
+    end
+  end
+
+  defp punctuation_candidate(_source, _size, _offset, _length), do: nil
 
   defp starts_with?(source, offset, expected) do
     expected_size = byte_size(expected)
