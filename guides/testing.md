@@ -50,19 +50,20 @@ The complete local unit and artifact checks are:
 
 ```sh
 mix deps.get
-mix format --check-formatted
-mix compile --force --warnings-as-errors
-mix credo --strict
-mix test
-mix dialyzer
+mix quality
+mix quality_full
 
 npm ci
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-npm run pack:check
+npm run quality
+npm run quality:ci
 ```
+
+`mix quality_full` is the closest single local entry point to the latest BEAM
+CI lane because it adds retired and vulnerable dependency audits, unused
+dependency checking, and Dialyzer to the fast checks. `npm run quality:ci`
+similarly layers package assembly and a dependency audit on top of the fast
+JavaScript checks. The lint stage uses Oxlint with its TypeScript 7-aware
+`oxlint-tsgolint` backend.
 
 ExUnit covers assign classification, encoding, compact patches, streams, slots,
 SSR, forms/uploads, the installer, and the HTML test helper. Vitest covers

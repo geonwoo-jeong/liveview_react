@@ -401,7 +401,11 @@ describe("LiveViewReactHook", () => {
     const serverProps = findComponentProps(
       vi.mocked(ReactDOM.hydrateRoot).mock.calls[0]?.[1] as ReactNode,
     );
-    expect(() => (serverProps?.onIncrement as () => void)()).toThrow(
+    const onIncrement = serverProps?.onIncrement;
+    if (typeof onIncrement !== "function") {
+      throw new Error("Expected the hydrated onIncrement callback");
+    }
+    expect(() => onIncrement()).toThrow(
       "unavailable during server rendering or hydration",
     );
   });

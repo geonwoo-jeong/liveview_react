@@ -10,14 +10,18 @@ export function Context({ count }: { count: number }) {
       <div className="flex flex-row items-center justify-center gap-10">
         <button
           className="px-4 py-2 rounded bg-red-500 text-white cursor-pointer"
-          onClick={() => pushEvent("set_count", { value: count - amount })}
+          onClick={() => {
+            void pushEvent("set_count", { value: count - amount });
+          }}
         >
           -{amount}
         </button>
         <span className="text-xl">{count}</span>
         <button
           className="px-4 py-2 rounded bg-green-500 text-white cursor-pointer"
-          onClick={() => pushEvent("set_count", { value: count + amount })}
+          onClick={() => {
+            void pushEvent("set_count", { value: count + amount });
+          }}
         >
           +{amount}
         </button>

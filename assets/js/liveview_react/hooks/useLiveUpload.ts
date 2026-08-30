@@ -325,6 +325,9 @@ export function useLiveUpload(
   );
   const normalizedOptions = useMemo(
     () => normalizeOptions(options),
+    // normalizeOptions reads only these fields. Tracking the options object would
+    // recreate normalizedOptions whenever callers use an inline object.
+    // oxlint-disable-next-line react/exhaustive-deps
     [
       options.cancelEvent,
       options.changeEvent,

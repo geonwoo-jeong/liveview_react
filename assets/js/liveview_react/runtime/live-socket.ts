@@ -12,10 +12,6 @@ export interface LiveSocketJSCommands {
   ) => void;
 }
 
-interface LiveSocketWithJs {
-  readonly js: () => LiveSocketJSCommands;
-}
-
 export function readLiveSocketCommands(
   liveSocket: unknown,
 ): LiveSocketJSCommands | null {
