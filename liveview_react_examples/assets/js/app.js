@@ -17,6 +17,7 @@ window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
 
 function connectLiveView(registeredComponents, e2eOptions = {}) {
   const liveViewReact = createLiveViewReact({
+    ...(e2eOptions.rootOptions ?? {}),
     components: registeredComponents,
     strictMode: __LIVEVIEW_REACT_E2E__,
   });
@@ -44,12 +45,18 @@ function connectLiveView(registeredComponents, e2eOptions = {}) {
 
 if (__LIVEVIEW_REACT_E2E__) {
   import("../../e2e/support/registry").then(
-    ({ auditLiveViewReactHook, default: e2eComponents, e2eConnectParams }) => {
+    ({
+      auditLiveViewReactHook,
+      default: e2eComponents,
+      e2eConnectParams,
+      e2eRootOptions,
+    }) => {
       connectLiveView(
         { ...components, ...e2eComponents },
         {
           auditHook: auditLiveViewReactHook,
           connectParams: e2eConnectParams,
+          rootOptions: e2eRootOptions,
         },
       );
     },

@@ -16,6 +16,7 @@ let audit = Object.freeze({
   hydrationMounts: Object.freeze([]),
   transport: Object.freeze({ corruptions: 0 }),
   hookCallbacks: Object.freeze([]),
+  rootErrors: Object.freeze([]),
 });
 
 let pendingLazy = Object.freeze({
@@ -224,6 +225,23 @@ export function recordProbeCleanup(label) {
     ...current,
     cleanups: current.cleanups + 1,
   }));
+}
+
+export function recordRootError(kind, error, info) {
+  const entry = Object.freeze({
+    kind,
+    name: error instanceof Error ? error.name : typeof error,
+    message: error instanceof Error ? error.message : String(error),
+    componentStack:
+      typeof info?.componentStack === "string" ? info.componentStack : null,
+  });
+
+  audit = Object.freeze({
+    ...audit,
+    rootErrors: Object.freeze([...audit.rootErrors, entry]),
+  });
+
+  return entry;
 }
 
 export function recordStrictRegistration() {
