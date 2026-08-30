@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "A first-class React bridge for Phoenix LiveView",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geonwoo-jeong/liveview_react.git"
+  },
+  "homepage": "https://github.com/geonwoo-jeong/liveview_react#readme",
+  "bugs": {
+    "url": "https://github.com/geonwoo-jeong/liveview_react/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
