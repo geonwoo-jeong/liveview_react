@@ -73,6 +73,7 @@ describe("slot bindings", () => {
     ["Phoenix-managed bindings", '<button phx-click="save">Save</button>'],
     ["Phoenix-managed bindings", '<div data-phx-component="1"></div>'],
     ["nested React roots", "<div data-react-target></div>"],
+    ["nested React roots", "<div data-react-hydration></div>"],
     ["nested React roots", '<div data-liveview-react-version="1"></div>'],
     ["event handler attributes", '<div onclick="alert(1)">Click</div>'],
     ["event handler attributes", "<DIV ONLOAD='alert(1)'>Load</DIV>"],
@@ -90,6 +91,9 @@ describe("slot bindings", () => {
     ],
     ["non-inert attribute", "<div contenteditable>Editable</div>"],
     ["markup declarations", '<!--><img src="/tracking.gif">-->'],
+    ["markup declarations", "<!-- nested <!-- comment -->"],
+    ["markup declarations", "<!-- invalid --!> comment -->"],
+    ["malformed HTML", "<!-- unterminated"],
     ["malformed HTML", '<div title="unterminated>'],
   ])("rejects unsupported %s", (reason, html) => {
     expect(() =>
@@ -152,6 +156,15 @@ describe("slot bindings", () => {
   it("allows explicitly inert semantic markup and neutral attributes", () => {
     const html =
       '<section id="summary" class="card" role="region" aria-label="Summary" data-testid="summary"><time datetime="2026-08-30">Today</time><blockquote title="1 > 0">Safe</blockquote></section>';
+
+    expect(() =>
+      createSlotBindings({ default: html }, {}, "test slots"),
+    ).not.toThrow();
+  });
+
+  it("allows valid Phoenix HEEx annotations and unrelated data-react attributes", () => {
+    const html =
+      '<!-- @caller lib/app_web/home_live.ex:20 (app) --><!-- <AppWeb.CoreComponents.item> lib/app_web/home_live.ex:21 (app) --><span data-reactive="true">Safe</span><!-- </AppWeb.CoreComponents.item> -->';
 
     expect(() =>
       createSlotBindings({ default: html }, {}, "test slots"),

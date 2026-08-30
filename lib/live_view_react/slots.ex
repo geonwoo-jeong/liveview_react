@@ -27,6 +27,9 @@ defmodule LiveViewReact.Slots do
     itemid itemtype longdesc manifest ping poster profile src srcdoc srcset usemap
     xlink:href
   )
+  @nested_root_attributes ~w(
+    data-react-checksum data-react-hydration data-react-target data-reactid data-reactroot
+  )
   @safe_prefixed_attribute ~r/\A(?:aria|data)-[a-z0-9_.:-]+\z/
 
   @doc """
@@ -161,6 +164,7 @@ defmodule LiveViewReact.Slots do
     end
   end
 
+  defp scan_slot_markup(<<"!--", rest::binary>>), do: scan_slot_comment(rest)
   defp scan_slot_markup(<<?!, _rest::binary>>), do: {:error, "markup declarations"}
   defp scan_slot_markup(<<??, _rest::binary>>), do: {:error, "processing instructions"}
   defp scan_slot_markup(<<?/, rest::binary>>), do: scan_closing_slot_tag(rest)
@@ -170,6 +174,27 @@ defmodule LiveViewReact.Slots do
        do: scan_opening_slot_tag(html)
 
   defp scan_slot_markup(html), do: scan_slot_html(html)
+
+  defp scan_slot_comment(html) do
+    case :binary.match(html, "-->") do
+      :nomatch ->
+        {:error, "malformed HTML"}
+
+      {index, 3} ->
+        comment = binary_part(html, 0, index)
+        rest = binary_part(html, index + 3, byte_size(html) - index - 3)
+
+        if valid_slot_comment?(comment),
+          do: scan_slot_html(rest),
+          else: {:error, "markup declarations"}
+    end
+  end
+
+  defp valid_slot_comment?(comment) do
+    not String.starts_with?(comment, [">", "->"]) and
+      not String.contains?(comment, ["<!--", "--!>"]) and
+      not String.ends_with?(comment, "<!-")
+  end
 
   defp scan_opening_slot_tag(html) do
     with {:ok, tag_name, rest} <- take_slot_name(html),
@@ -259,7 +284,7 @@ defmodule LiveViewReact.Slots do
       String.starts_with?(name, "phx-") or String.starts_with?(name, "data-phx-") ->
         "Phoenix-managed bindings"
 
-      String.starts_with?(name, "data-react") or
+      name in @nested_root_attributes or
           String.starts_with?(name, "data-liveview-react-") ->
         "nested React roots"
 

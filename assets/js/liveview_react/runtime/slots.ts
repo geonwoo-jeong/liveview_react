@@ -125,6 +125,13 @@ const URL_SLOT_ATTRIBUTES: ReadonlySet<string> = new Set([
   "usemap",
   "xlink:href",
 ]);
+const NESTED_ROOT_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "data-react-checksum",
+  "data-react-hydration",
+  "data-react-target",
+  "data-reactid",
+  "data-reactroot",
+]);
 const SAFE_PREFIXED_ATTRIBUTE = /^(?:aria|data)-[a-z0-9_.:-]+$/;
 const UNSAFE_SLOT_NAMES: ReadonlySet<string> = new Set([
   "__proto__",
@@ -185,6 +192,10 @@ function findSlotMarkupViolation(html: string): string | undefined {
 }
 
 function scanSlotMarkup(html: string, cursor: number): SlotMarkupScan {
+  if (html.startsWith("!--", cursor)) {
+    return scanSlotComment(html, cursor + 3);
+  }
+
   const first = html[cursor];
   if (first === "!")
     return { next: html.length, violation: "markup declarations" };
@@ -197,6 +208,28 @@ function scanSlotMarkup(html: string, cursor: number): SlotMarkupScan {
   }
 
   return { next: cursor };
+}
+
+function scanSlotComment(html: string, cursor: number): SlotMarkupScan {
+  const commentEnd = html.indexOf("-->", cursor);
+  if (commentEnd === -1) {
+    return { next: html.length, violation: "malformed HTML" };
+  }
+
+  const comment = html.slice(cursor, commentEnd);
+  return isValidSlotComment(comment)
+    ? { next: commentEnd + 3 }
+    : { next: html.length, violation: "markup declarations" };
+}
+
+function isValidSlotComment(comment: string): boolean {
+  return !(
+    comment.startsWith(">") ||
+    comment.startsWith("->") ||
+    comment.includes("<!--") ||
+    comment.includes("--!>") ||
+    comment.endsWith("<!-")
+  );
 }
 
 function scanOpeningSlotTag(html: string, cursor: number): SlotMarkupScan {
@@ -267,7 +300,7 @@ function slotAttributeViolation(name: string): string | undefined {
     return "Phoenix-managed bindings";
   }
   if (
-    name.startsWith("data-react") ||
+    NESTED_ROOT_ATTRIBUTES.has(name) ||
     name.startsWith("data-liveview-react-")
   ) {
     return "nested React roots";

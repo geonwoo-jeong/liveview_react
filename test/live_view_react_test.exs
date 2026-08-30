@@ -701,6 +701,7 @@ defmodule LiveViewReactTest do
         {"forms", "<form><input></form>"},
         {"Phoenix hooks", ~s|<div phx-hook="Nested"></div>|},
         {"Phoenix-managed bindings", ~s|<div data-phx-component="1"></div>|},
+        {"nested React roots", ~s|<div data-react-hydration></div>|},
         {"nested React roots", ~s|<div data-liveview-react-version="2"></div>|}
       ]
 
@@ -737,6 +738,9 @@ defmodule LiveViewReactTest do
          ~s|<blockquote cite="https://example.test">quote</blockquote>|},
         {"non-inert attribute", ~s|<div contenteditable>editable</div>|},
         {"markup declarations", ~s|<!--><img src="/tracking.gif">-->|},
+        {"markup declarations", ~s|<!-- nested <!-- comment -->|},
+        {"markup declarations", ~s|<!-- invalid --!> comment -->|},
+        {"malformed HTML", ~s|<!-- unterminated|},
         {"malformed HTML", ~s|<div title="unterminated>|}
       ]
 
@@ -776,6 +780,32 @@ defmodule LiveViewReactTest do
           __changed__: nil,
           component: "WithSlots",
           id: "inert-raw-slot",
+          inner_block: slot,
+          socket: %Socket{},
+          ssr: false
+        })
+        |> Safe.to_iodata()
+        |> IO.iodata_to_binary()
+
+      assert Test.get_react(html).slots == %{"default" => slot_html}
+    end
+
+    test "allows valid Phoenix HEEx annotations and unrelated data-react attributes" do
+      slot_html =
+        ~s|<!-- @caller lib/app_web/home_live.ex:20 (app) --><!-- <AppWeb.CoreComponents.item> lib/app_web/home_live.ex:21 (app) --><span data-reactive="true">Safe</span><!-- </AppWeb.CoreComponents.item> -->|
+
+      slot = [
+        %{
+          __slot__: :inner_block,
+          inner_block: fn _, _ -> [Phoenix.HTML.raw(slot_html)] end
+        }
+      ]
+
+      html =
+        LiveViewReact.react(%{
+          __changed__: nil,
+          component: "WithSlots",
+          id: "annotated-slot",
           inner_block: slot,
           socket: %Socket{},
           ssr: false
