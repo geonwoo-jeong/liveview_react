@@ -1,6 +1,6 @@
 # Upstream provenance and synchronization policy
 
-Status: frozen for Phase 0
+Status: imported baseline frozen; clean-break implementation active
 Snapshot date: 2026-08-30 (Asia/Tokyo)
 
 `liveview_react` starts from the Git history and source tree of

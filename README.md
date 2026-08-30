@@ -85,16 +85,16 @@ current `Phoenix.LiveView.Socket`. Every other assign—including `class`—is a
 React prop unless it is a reserved rendering attribute. The outer DOM element
 is transport-only and has no public styling attributes.
 
-Inside the React tree, `useLiveReact()` exposes the existing LiveView hook
+Inside the React tree, `useLiveViewReact()` exposes the existing LiveView hook
 bridge:
 
 ```tsx
 import { useState } from "react";
-import { useLiveReact } from "liveview_react";
+import { useLiveViewReact } from "liveview_react";
 
 export default function Counter({ count }: { count: number }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { pushEvent } = useLiveReact();
+  const { pushEvent } = useLiveViewReact();
 
   async function increment() {
     setErrorMessage(null);
@@ -134,9 +134,9 @@ type Notification = {
 };
 
 function Notifications() {
-  const [notifications, setNotifications] = useState<
-    readonly Notification[]
-  >([]);
+  const [notifications, setNotifications] = useState<readonly Notification[]>(
+    [],
+  );
 
   useLiveEvent<Notification>("notification", (notification) => {
     setNotifications((current) => [...current, notification]);
@@ -160,8 +160,9 @@ await search.execute({ query });
 `useLiveConnection()` reports `{ connected, reconnecting }` through a React
 external store. `useLiveNavigation()` exposes the current public
 `liveSocket.js().patch()` and `.navigate()` commands. The hook can render
-during SSR and hydration; invoking a command before the live bridge exists
-throws a clear error.
+during SSR and hydration. Render-time bridge access still throws until the live
+bridge exists, while the built-in hooks use the live client bridge for
+post-commit browser events during hydration.
 
 For anchors, prefer the declarative `Link` component:
 
@@ -181,11 +182,14 @@ attributes such as `<button phx-click="increment">`.
 
 ## Streams and slots
 
-Pass `@streams.name` directly as a prop. React receives an immutable array and
-each item includes Phoenix's computed `__dom_id`, which should be used as its
-React key. Insert, in-place update, `update_only`, delete, reset, custom DOM ID,
-positive/negative limit, and multiple independent streams follow Phoenix
-semantics.
+Pass `@streams.name` directly as a prop. React receives that required immutable
+array during disconnected SSR, in no-JavaScript HTML, during hydration, and on
+connected updates and reconnects. An empty stream is still present as `[]`.
+Each item includes Phoenix's computed `__dom_id`, which should be used as its
+React key. The exact dead-render snapshot hydrates first; a newer connected
+snapshot is applied only after the hydration commit. Insert, in-place update,
+`update_only`, delete, reset, custom DOM ID, positive/negative limit, and
+multiple independent streams follow Phoenix's mode-specific semantics.
 
 Default HEEx content is transported as React `children`, and named HEEx slots
 are transported as same-name React props:
@@ -214,6 +218,11 @@ import { createLiveViewReactServer } from "liveview_react/server";
 
 export const { render } = createLiveViewReactServer({ components });
 ```
+
+The renderer accepts only the mandatory flat transport-v2 frame. Its
+`streams` field contains the same dead-render snapshot embedded in the
+hydration descriptor, so SSR HTML, no-JavaScript output, and the first
+`hydrateRoot` tree receive identical stream props.
 
 ## Guides
 

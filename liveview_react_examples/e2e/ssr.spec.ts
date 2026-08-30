@@ -30,11 +30,19 @@ test.describe("without JavaScript", () => {
     await page.goto("/e2e/ssr");
 
     const serverRoot = page.locator("#e2e-ssr-root");
+    const secondServerRoot = page.locator("#e2e-ssr-root-two");
     const clientRoot = page.locator("#e2e-client-root");
 
     await expect(serverRoot.getByTestId("ssr-probe")).toBeVisible();
     await expect(serverRoot.getByTestId("ssr-phase")).toHaveText("dead");
     await expect(serverRoot.getByTestId("ssr-provider")).toHaveText("server");
+    await expect(serverRoot.getByTestId("ssr-live-event")).toHaveText(
+      "pending",
+    );
+    await expect(secondServerRoot.getByTestId("ssr-probe")).toBeVisible();
+    await expect(secondServerRoot.getByTestId("ssr-provider")).toHaveText(
+      "server",
+    );
     await expect(clientRoot.locator("[data-react-target]")).toBeEmpty();
     await expect(
       serverRoot.locator(
@@ -60,19 +68,28 @@ test("hydrates in place before applying connected props and context", async ({
   await page.goto("/e2e/ssr", { waitUntil: "commit" });
 
   const serverRoot = page.locator("#e2e-ssr-root");
+  const secondServerRoot = page.locator("#e2e-ssr-root-two");
   const clientRoot = page.locator("#e2e-client-root");
   const serverTarget = serverRoot.locator("[data-react-target]");
   const input = serverRoot.getByTestId("ssr-input");
+  const secondInput = secondServerRoot.getByTestId("ssr-input");
   const inputBeforeHydration = await input.elementHandle();
+  const secondInputBeforeHydration = await secondInput.elementHandle();
 
   expect(inputBeforeHydration).not.toBeNull();
+  expect(secondInputBeforeHydration).not.toBeNull();
   await expect(serverTarget).toHaveAttribute("data-react-hydration", /.+/);
   await expect(serverRoot.getByTestId("ssr-phase")).toHaveText("dead");
   await expect(serverRoot.getByTestId("ssr-provider")).toHaveText("server");
+  await expect(serverRoot.getByTestId("ssr-live-event")).toHaveText("pending");
 
   const inputId = await input.getAttribute("id");
+  const secondInputId = await secondInput.getAttribute("id");
   expect(inputId).toBeTruthy();
+  expect(secondInputId).toBeTruthy();
   expect(inputId).toContain("liveview-react-e2e-ssr-root-");
+  expect(secondInputId).toContain("liveview-react-e2e-ssr-root-two-");
+  expect(secondInputId).not.toBe(inputId);
   await expect(serverRoot.getByTestId("ssr-label")).toHaveAttribute(
     "for",
     inputId ?? "",
@@ -87,6 +104,12 @@ test("hydrates in place before applying connected props and context", async ({
     ),
     "client bootstrap must not replace the SSR input while the join is pending",
   ).toBe(true);
+  expect(
+    await secondInputBeforeHydration?.evaluate(
+      (node) => node === document.querySelector("#e2e-ssr-root-two input"),
+    ),
+    "client bootstrap must preserve every SSR root while the join is pending",
+  ).toBe(true);
 
   await expect(page.locator("[data-phx-main]")).toHaveClass(/phx-connected/);
   const hydrationMounts = await page.evaluate(
@@ -98,14 +121,28 @@ test("hydrates in place before applying connected props and context", async ({
     childElementCount: 3,
     inputId,
   });
+  expect(hydrationMounts).toContainEqual({
+    rootId: "e2e-ssr-root-two",
+    descriptorPresent: true,
+    childElementCount: 3,
+    inputId: secondInputId,
+  });
   await expect(serverRoot.getByTestId("ssr-phase")).toHaveText("connected");
   await expect(serverRoot.getByTestId("ssr-provider")).toHaveText(
     "e2e-ssr-root",
+  );
+  await expect(secondServerRoot.getByTestId("ssr-provider")).toHaveText(
+    "e2e-ssr-root-two",
   );
   await expect(clientRoot.getByTestId("ssr-phase")).toHaveText("connected");
   await expect(clientRoot.getByTestId("ssr-provider")).toHaveText(
     "e2e-client-root",
   );
+  await expect(serverRoot.getByTestId("ssr-live-event")).toHaveText("received");
+  await expect(secondServerRoot.getByTestId("ssr-live-event")).toHaveText(
+    "received",
+  );
+  await expect(clientRoot.getByTestId("ssr-live-event")).toHaveText("received");
   await expect(input).toHaveValue("preserved");
   expect(
     await inputBeforeHydration?.evaluate(
@@ -113,5 +150,6 @@ test("hydrates in place before applying connected props and context", async ({
     ),
   ).toBe(true);
   expect(await input.getAttribute("id")).toBe(inputId);
+  expect(await secondInput.getAttribute("id")).toBe(secondInputId);
   expect(diagnostics()).toEqual([]);
 });

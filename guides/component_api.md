@@ -107,7 +107,7 @@ element for client-only roots and client renders after hydration. Do not derive
 different visible provider markup from that value during hydration.
 
 The factory returns `{ hooks: { LiveViewReactHook } }`. The main package also
-exports `Link`, `useLiveReact`, `useLiveEvent`, `useEventReply`,
+exports `Link`, `useLiveViewReact`, `useLiveEvent`, `useEventReply`,
 `useLiveConnection`, `useLiveNavigation`, `useLiveForm`, and `useLiveUpload`,
 with their public TypeScript types.
 
@@ -162,6 +162,9 @@ export function render(request: ServerRenderRequest): Promise<string> {
 `createLiveViewReactServer` accepts `components`, `strictMode`, and `wrapRoot`.
 Client root error callbacks are rejected on the server. Applications normally
 receive `ServerRenderRequest` from the BEAM adapter rather than constructing it.
+That request is the exact transport-v2 initial frame; `version`, `component`,
+`identifierPrefix`, `props`, `streams`, `events`, and `slots` are all required,
+and unknown fields are rejected.
 
 ## Public error classes
 

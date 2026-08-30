@@ -28,7 +28,7 @@ export default defineConfig({
         /^vite(?:\/.*)?$/,
       ],
     },
-    sourcemap: true,
+    sourcemap: false,
     target: "es2024",
   },
 });

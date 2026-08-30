@@ -1,5 +1,4 @@
-export type PatchOperationName =
-  "add" | "remove" | "replace" | "upsert" | "limit";
+export type PatchOperationName = "add" | "remove" | "replace" | "stream";
 
 export interface PatchOperation {
   readonly op: PatchOperationName;
@@ -85,10 +84,8 @@ function opFromCode(code: string): PatchOperationName {
       return "remove";
     case "r":
       return "replace";
-    case "u":
-      return "upsert";
-    case "l":
-      return "limit";
+    case "s":
+      return "stream";
     default:
       throw new Error(`Unknown LiveViewReact patch operation code: ${code}`);
   }

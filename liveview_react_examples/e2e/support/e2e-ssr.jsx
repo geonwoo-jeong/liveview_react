@@ -1,10 +1,15 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { preload, preloadModule } from "react-dom";
-import { useLiveReact } from "liveview_react";
+import { useLiveEvent, useLiveViewReact } from "liveview_react";
 
 export function E2ESSRProbe({ phase }) {
   const inputId = useId();
-  const { el } = useLiveReact();
+  const { el } = useLiveViewReact();
+  const [serverEvent, setServerEvent] = useState("pending");
+
+  useLiveEvent("e2e_ssr_live_event", ({ message }) => {
+    setServerEvent(message);
+  });
 
   preload("/assets/app.css", { as: "style" });
   preloadModule("/assets/app.js", { as: "script" });
@@ -15,6 +20,7 @@ export function E2ESSRProbe({ phase }) {
       <output data-testid="ssr-provider">
         {el === null ? "server" : el.id}
       </output>
+      <output data-testid="ssr-live-event">{serverEvent}</output>
       <label data-testid="ssr-label" htmlFor={inputId}>
         deterministic React id
       </label>

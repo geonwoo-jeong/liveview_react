@@ -14,8 +14,7 @@ defmodule LiveViewReact.Patch do
   | `a` | `add` |
   | `d` | `remove` |
   | `r` | `replace` |
-  | `u` | `upsert` |
-  | `l` | `limit` |
+  | `s` | `stream` |
 
   Normal operations use:
 
@@ -38,8 +37,9 @@ defmodule LiveViewReact.Patch do
   Paths are transported as JSON Pointer strings unchanged.
   """
 
-  @min_safe_integer -9_007_199_254_740_991
-  @max_safe_integer 9_007_199_254_740_991
+  alias LiveViewReact.StreamAdapter
+
+  @unsafe_stream_names ~w(__proto__ constructor prototype)
 
   @doc """
   Serializes patch maps into a compact binary payload.
@@ -95,21 +95,21 @@ defmodule LiveViewReact.Patch do
     |> Enum.reverse()
   end
 
-  defp serialize_op(%{op: op, path: path, value: value})
-       when op in ["add", "replace", "upsert"] and is_binary(path) do
+  defp serialize_op(%{op: "stream", path: path, value: frame} = patch)
+       when map_size(patch) == 3 and is_binary(path) do
+    path = encode_stream_path(path)
+    frame = StreamAdapter.validate_frame!(frame)
+    [op_code("stream"), Integer.to_string(js_string_length(path)), ?:, path, encode_value(frame)]
+  end
+
+  defp serialize_op(%{op: op, path: path, value: value} = patch)
+       when map_size(patch) == 3 and op in ["add", "replace"] and is_binary(path) do
     path = encode_path(path)
     [op_code(op), Integer.to_string(js_string_length(path)), ?:, path, encode_value(value)]
   end
 
-  defp serialize_op(%{op: "limit", path: path, value: value})
-       when is_binary(path) and is_integer(value) and
-              value >= @min_safe_integer and value <= @max_safe_integer do
-    path = encode_path(path)
-    [op_code("limit"), Integer.to_string(js_string_length(path)), ?:, path, encode_value(value)]
-  end
-
   defp serialize_op(%{op: "remove", path: path} = patch)
-       when is_binary(path) and not is_map_key(patch, :value) do
+       when map_size(patch) == 2 and is_binary(path) do
     path = encode_path(path)
     [op_code("remove"), Integer.to_string(js_string_length(path)), ?:, path]
   end
@@ -119,6 +119,40 @@ defmodule LiveViewReact.Patch do
   defp encode_path(""), do: ""
   defp encode_path("/" <> _rest = path), do: path
   defp encode_path(path), do: raise(ArgumentError, "invalid JSON Pointer path: #{inspect(path)}")
+
+  defp encode_stream_path("/" <> segment = path) when segment != "" do
+    if valid_pointer_segment?(segment) and
+         decode_pointer_segment(segment) not in @unsafe_stream_names do
+      path
+    else
+      raise ArgumentError, "invalid stream JSON Pointer path: #{inspect(path)}"
+    end
+  end
+
+  defp encode_stream_path(path) do
+    raise ArgumentError, "invalid stream JSON Pointer path: #{inspect(path)}"
+  end
+
+  defp valid_pointer_segment?(segment), do: valid_pointer_segment?(segment, false)
+  defp valid_pointer_segment?("", false), do: true
+  defp valid_pointer_segment?("", true), do: false
+  defp valid_pointer_segment?("~" <> rest, false), do: valid_pointer_segment?(rest, true)
+
+  defp valid_pointer_segment?(<<escaped, rest::binary>>, true) when escaped in [?0, ?1],
+    do: valid_pointer_segment?(rest, false)
+
+  defp valid_pointer_segment?("/" <> _rest, false), do: false
+
+  defp valid_pointer_segment?(<<_codepoint::utf8, rest::binary>>, false),
+    do: valid_pointer_segment?(rest, false)
+
+  defp valid_pointer_segment?(_segment, _escaped?), do: false
+
+  defp decode_pointer_segment(segment) do
+    segment
+    |> String.replace("~1", "/")
+    |> String.replace("~0", "~")
+  end
 
   defp encode_value(nil), do: "z"
   defp encode_value(true), do: "b1"
@@ -148,14 +182,11 @@ defmodule LiveViewReact.Patch do
 
   defp parse_op("remove", path, rest, acc), do: parse_ops(rest, [["remove", path] | acc])
 
-  defp parse_op("limit", path, rest, acc) do
-    {value, rest} = parse_value(rest)
-
-    if is_integer(value) and value >= @min_safe_integer and value <= @max_safe_integer do
-      parse_ops(rest, [["limit", path, value] | acc])
-    else
-      raise ArgumentError, "Patch limit must be a safe integer"
-    end
+  defp parse_op("stream", path, rest, acc) do
+    path = encode_stream_path(path)
+    {frame, rest} = parse_value(rest)
+    frame = StreamAdapter.validate_frame!(frame)
+    parse_ops(rest, [["stream", path, frame] | acc])
   end
 
   defp parse_op(op, path, rest, acc) do
@@ -248,15 +279,13 @@ defmodule LiveViewReact.Patch do
   defp op_code("add"), do: "a"
   defp op_code("remove"), do: "d"
   defp op_code("replace"), do: "r"
-  defp op_code("upsert"), do: "u"
-  defp op_code("limit"), do: "l"
+  defp op_code("stream"), do: "s"
   defp op_code(op), do: raise(ArgumentError, "Unknown patch operation: #{inspect(op)}")
 
   defp op_from_code("a"), do: "add"
   defp op_from_code("d"), do: "remove"
   defp op_from_code("r"), do: "replace"
-  defp op_from_code("u"), do: "upsert"
-  defp op_from_code("l"), do: "limit"
+  defp op_from_code("s"), do: "stream"
 
   defp op_from_code(code),
     do: raise(ArgumentError, "Unknown patch operation code: #{inspect(code)}")

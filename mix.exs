@@ -75,7 +75,7 @@ defmodule LiveViewReact.MixProject do
         "Upstream project" => "https://github.com/mrdotb/live_react"
       },
       files:
-        ~w(dist guides lib)s ++
+        ~w(dist guides lib priv/installer)s ++
           ~w(CHANGELOG.md LICENSE.md README.md THIRD_PARTY_NOTICES.md UPSTREAM.md) ++
           ~w(mix.exs package.json .formatter.exs)
     ]

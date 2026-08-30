@@ -1,0 +1,81 @@
+{
+  "transportVersion": 2,
+  "scenario": {
+    "id": "dead-render-and-connected-snapshot-diverge",
+    "streamName": "users",
+    "domIdPrefix": "custom-user-",
+    "initialItems": [
+      { "id": 1, "label": "one" },
+      { "id": 2, "label": "two" },
+      { "id": 3, "label": "three" }
+    ],
+    "initialLimit": 2,
+    "operations": [
+      {
+        "kind": "insert",
+        "item": { "id": 2, "label": "two updated" },
+        "at": 0,
+        "limit": 1,
+        "updateOnly": true
+      },
+      {
+        "kind": "insert",
+        "item": { "id": 4, "label": "four" },
+        "at": 0,
+        "limit": -2,
+        "updateOnly": false
+      },
+      { "kind": "delete", "domId": "custom-user-1" },
+      { "kind": "reset" }
+    ],
+    "expectedDeadRenderSnapshot": {
+      "users": [
+        { "id": 1, "label": "one", "__dom_id": "custom-user-1" },
+        { "id": 3, "label": "three", "__dom_id": "custom-user-3" },
+        {
+          "id": 2,
+          "label": "two updated",
+          "__dom_id": "custom-user-2"
+        },
+        { "id": 4, "label": "four", "__dom_id": "custom-user-4" }
+      ]
+    },
+    "expectedConnectedSnapshotPatches": [
+      {
+        "op": "stream",
+        "path": "/users",
+        "value": {
+          "items": [
+            { "id": 1, "label": "one", "__dom_id": "custom-user-1" },
+            {
+              "id": 3,
+              "label": "three",
+              "__dom_id": "custom-user-3"
+            },
+            {
+              "id": 2,
+              "label": "two updated",
+              "__dom_id": "custom-user-2"
+            },
+            { "id": 4, "label": "four", "__dom_id": "custom-user-4" }
+          ],
+          "inserts": [
+            ["custom-user-4", 0, -2, false],
+            ["custom-user-2", 0, 1, true],
+            ["custom-user-3", -1, 2, false],
+            ["custom-user-2", -1, 2, false],
+            ["custom-user-1", -1, 2, false]
+          ],
+          "deletes": ["custom-user-1"],
+          "reset": true
+        }
+      }
+    ],
+    "expectedConnectedSnapshot": {
+      "users": [
+        { "id": 1, "label": "one", "__dom_id": "custom-user-1" },
+        { "id": 3, "label": "three", "__dom_id": "custom-user-3" }
+      ]
+    }
+  }
+}

@@ -212,6 +212,7 @@ export class RootController {
     return createComponentTree({
       Component: this.#Component,
       children: snapshot.children,
+      clientContext: this.#context,
       componentName: this.#componentName,
       connectionStore: this.#connectionStore,
       context: hydrating ? SERVER_BRIDGE_CONTEXT : this.#context,

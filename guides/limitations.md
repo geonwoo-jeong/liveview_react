@@ -35,6 +35,36 @@ compatibility modes.
 
 - SSR uses `renderToString`, not React streaming SSR. A suspended component
   renders its nearest Suspense fallback.
+- Phoenix deliberately does not apply a stream `limit` during the disconnected
+  render. No-JavaScript and pre-join SSR HTML can therefore contain more rows
+  than the authoritative connected snapshot; LiveViewReact hydrates that exact
+  dead frame before applying the bounded connected state.
+- Stream items must encode as plain JSON objects. LiveViewReact preserves
+  Phoenix's computed `__dom_id` but never transports a `LiveStream` struct,
+  function, reference, or other BEAM runtime value. Unsupported internal
+  LiveStream shapes fail closed against the declared Phoenix LiveView version
+  range.
+- Slow LiveView redirects keep visual continuity with a navigation-only inert
+  DOM snapshot after React unmounts. Effect cleanup, bridge teardown, and lazy
+  mount cancellation still happen immediately. The snapshot copies ordinary
+  DOM, form state, scroll offsets, and 2D canvas pixels where the browser
+  exposes them. Custom elements, URL-backed CSS presentation, and active or
+  resource-bearing content such as images, pictures, SVG, iframes, media, and
+  scripts become bounded passive placeholders rather than reconnecting
+  behavior or repeating resource requests. Those placeholders deliberately
+  preserve geometry and a small safe subset of computed presentation, not the
+  original URL-bearing attributes or styles. The snapshot is not a second live
+  React tree or a pixel-perfect replay for portals, shadow DOM, images, active
+  media playback, SVG, WebGL, text selection, or caret position.
+
+  Phoenix replacement or a matching navigation completion removes the
+  snapshot exactly once. If neither arrives, a two-second fail-safe removes the
+  snapshot, disconnects its observer and listeners, and leaves the already
+  destroyed outgoing target empty and inert. React effects and bridge state
+  were intentionally finalized before the snapshot appeared, so the bridge
+  cannot revive that old React root; a later Phoenix replacement or a new page
+  navigation must provide the next live UI.
+
 - The Vite plugin provides development SSR. Production requires a separately
   built ESM server bundle, the optional NodeJS dependency and supervisor, and a
   Node.js runtime in the release image.
@@ -57,8 +87,10 @@ compatibility modes.
   warmup, and garbage collection make portable numeric gates misleading.
 - Semantic checks still fail on incorrect chunk topology, hydration output,
   stream results, remount behavior, or lifecycle cleanup.
-- The repository does not automate an upstream-library performance comparison;
-  record environment and versions when comparing reports manually.
+- The repository includes a temp-only upstream comparison harness, but it
+  still reports rather than gates. Cross-version event, listener, heap, and
+  real Phoenix navigation numbers remain partially non-comparable because the
+  shipped public surfaces differ across generations.
 
 ## Forms, uploads, and events
 
@@ -68,9 +100,11 @@ compatibility modes.
   the React-owned target. React cannot synthesize Phoenix upload internals.
 - Reply cancellation is logical. It ignores a late reply but cannot retract an
   event already sent over the socket.
-- LiveView hook APIs are available only inside a LiveViewReact root. Commands
-  that require the live bridge throw when invoked during SSR or before
-  hydration makes the bridge available.
+- LiveView hook APIs are available only inside a LiveViewReact root. Public
+  `useLiveViewReact()` bridge commands still throw during SSR and the hydration
+  render pass. Built-in bridge hooks use internal client command wiring so
+  post-commit browser events during hydration can still validate forms,
+  navigate, subscribe, and dispatch uploads.
 
 ## Supported platform
 
@@ -79,3 +113,8 @@ ReactDOM 19.x, TypeScript 7.x, Vite 8.x, and Node.js 24+. It intentionally has
 no Phoenix 1.7, LiveView 0.x, React 18, CommonJS, old LiveReact namespace, or
 deprecated API compatibility layer. See [Testing](testing.md) for the exact CI
 matrix.
+
+The real-browser contract is currently Chromium only. Firefox and WebKit may
+work through the same standards-based APIs, but they are not supported claims
+for 0.1.0 until equivalent lifecycle, hydration, form, upload, and navigation
+lanes run in CI.

@@ -2,7 +2,7 @@ import { createElement, type ReactNode } from "react";
 import { preload, preloadModule } from "react-dom";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { useLiveReact } from "./context";
+import { useLiveViewReact } from "./context";
 import {
   createLiveViewReactServer,
   type CreateLiveViewReactServerOptions,
@@ -13,12 +13,54 @@ interface GreetingProps {
 }
 
 const IDENTIFIER_PREFIX = "liveview-react-server-test-";
+const EMPTY_INITIAL_FRAME_FIELDS = Object.freeze({
+  props: Object.freeze({}),
+  slots: Object.freeze({}),
+  streams: Object.freeze({}),
+  version: 2 as const,
+});
 
 function Greeting({ name = "world" }: GreetingProps) {
   return createElement("p", null, `Hello ${name}`);
 }
 
 describe("createLiveViewReactServer", () => {
+  it("renders mandatory stream props from a transport-v2 initial frame", async () => {
+    function UserList({
+      users,
+    }: {
+      readonly users: readonly Readonly<{
+        readonly __dom_id: string;
+        readonly name: string;
+      }>[];
+    }) {
+      return createElement(
+        "section",
+        null,
+        users.map((user) =>
+          createElement("article", { key: user.__dom_id }, user.name),
+        ),
+      );
+    }
+    const server = createLiveViewReactServer({
+      components: { UserList: { component: UserList } },
+    });
+
+    await expect(
+      server.render({
+        component: "UserList",
+        events: {},
+        identifierPrefix: IDENTIFIER_PREFIX,
+        props: {},
+        slots: {},
+        streams: {
+          users: [{ __dom_id: "users-1", name: "Ada" }],
+        },
+        version: 2,
+      }),
+    ).resolves.toBe("<section><article>Ada</article></section>");
+  });
+
   it("renders a tagged eager component", async () => {
     const server = createLiveViewReactServer({
       components: { Greeting: { component: Greeting } },
@@ -26,6 +68,7 @@ describe("createLiveViewReactServer", () => {
 
     await expect(
       server.render({
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -43,6 +86,7 @@ describe("createLiveViewReactServer", () => {
 
     await expect(
       server.render({
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -60,6 +104,7 @@ describe("createLiveViewReactServer", () => {
 
     await expect(
       server.render({
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Card",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -95,6 +140,7 @@ describe("createLiveViewReactServer", () => {
 
     await expect(
       server.render({
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Dialog",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -114,6 +160,7 @@ describe("createLiveViewReactServer", () => {
 
     await expect(
       server.render({
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Missing",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -123,9 +170,18 @@ describe("createLiveViewReactServer", () => {
 
   it.each([
     [null, "server render request must be a plain object"],
-    [{ component: "" }, "component must be a non-empty string"],
     [
       {
+        ...EMPTY_INITIAL_FRAME_FIELDS,
+        component: "",
+        events: {},
+        identifierPrefix: IDENTIFIER_PREFIX,
+      },
+      "component must be a non-empty string",
+    ],
+    [
+      {
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -135,6 +191,7 @@ describe("createLiveViewReactServer", () => {
     ],
     [
       {
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -144,6 +201,7 @@ describe("createLiveViewReactServer", () => {
     ],
     [
       {
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -152,16 +210,35 @@ describe("createLiveViewReactServer", () => {
       'Unknown server render request field "unexpected"',
     ],
     [
-      { component: "Greeting", events: {}, identifierPrefix: "" },
+      {
+        ...EMPTY_INITIAL_FRAME_FIELDS,
+        component: "Greeting",
+        events: {},
+        identifierPrefix: "",
+      },
       "identifierPrefix must be a non-empty string",
     ],
     [
-      { component: "Greeting", identifierPrefix: IDENTIFIER_PREFIX },
-      "server render events must contain a JSON object",
+      {
+        ...EMPTY_INITIAL_FRAME_FIELDS,
+        component: "Greeting",
+        identifierPrefix: IDENTIFIER_PREFIX,
+      },
+      'requires field "events"',
     ],
-    [{ component: "Greeting" }, "identifierPrefix must be a non-empty string"],
     [
       {
+        ...EMPTY_INITIAL_FRAME_FIELDS,
+        component: "Greeting",
+        events: {},
+        identifierPrefix: IDENTIFIER_PREFIX,
+        version: 1,
+      },
+      "version must be 2",
+    ],
+    [
+      {
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: { increment: [] },
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -197,7 +274,7 @@ describe("createLiveViewReactServer", () => {
 
   it("uses the same bridge-provider and custom-wrapper ordering as the client", async () => {
     function ServerWrapper({ children }: { readonly children: ReactNode }) {
-      const bridge = useLiveReact();
+      const bridge = useLiveViewReact();
       return createElement(
         "main",
         { "data-server": bridge.el === null ? "true" : "false" },
@@ -227,6 +304,7 @@ describe("createLiveViewReactServer", () => {
 
     await expect(
       server.render({
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
@@ -251,6 +329,7 @@ describe("createLiveViewReactServer", () => {
     });
 
     const html = await server.render({
+      ...EMPTY_INITIAL_FRAME_FIELDS,
       component: "EventProbe",
       events: {
         onIncrement: [["push", { event: "increment" }]],
@@ -270,6 +349,7 @@ describe("createLiveViewReactServer", () => {
 
     await expect(
       server.render({
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: {
           onIncrement: [["push", { event: "increment" }]],
@@ -277,7 +357,7 @@ describe("createLiveViewReactServer", () => {
         identifierPrefix: IDENTIFIER_PREFIX,
         props: { onIncrement: "ordinary" },
       }),
-    ).rejects.toThrow('ordinary prop "onIncrement"');
+    ).rejects.toThrow("as both ordinary prop and event callback");
   });
 
   it("rejects ordinary prop collisions with slot props", async () => {
@@ -287,13 +367,14 @@ describe("createLiveViewReactServer", () => {
 
     await expect(
       server.render({
+        ...EMPTY_INITIAL_FRAME_FIELDS,
         component: "Greeting",
         events: {},
         identifierPrefix: IDENTIFIER_PREFIX,
         props: { children: "ordinary" },
         slots: { default: "<strong>Slot</strong>" },
       }),
-    ).rejects.toThrow('cannot define both prop "children" and slot "default"');
+    ).rejects.toThrow("as both ordinary prop and slot prop");
   });
 
   it("keeps server markup stable when StrictMode is enabled", async () => {
@@ -301,6 +382,7 @@ describe("createLiveViewReactServer", () => {
     const regular = createLiveViewReactServer({ components });
     const strict = createLiveViewReactServer({ components, strictMode: true });
     const request = {
+      ...EMPTY_INITIAL_FRAME_FIELDS,
       component: "Greeting",
       events: {},
       identifierPrefix: IDENTIFIER_PREFIX,
@@ -323,6 +405,7 @@ describe("createLiveViewReactServer", () => {
     });
 
     const html = await server.render({
+      ...EMPTY_INITIAL_FRAME_FIELDS,
       component: "WithPreloads",
       events: {},
       identifierPrefix: IDENTIFIER_PREFIX,

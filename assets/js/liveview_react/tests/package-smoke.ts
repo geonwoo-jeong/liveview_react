@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 interface PackFile {
@@ -19,6 +19,16 @@ interface PackFile {
 interface PackResult {
   readonly filename: string;
   readonly files: readonly PackFile[];
+}
+
+interface PackageManifest {
+  readonly exports?: unknown;
+  readonly main?: unknown;
+  readonly name?: unknown;
+  readonly sideEffects?: unknown;
+  readonly type?: unknown;
+  readonly types?: unknown;
+  readonly version?: unknown;
 }
 
 const projectRoot = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -40,6 +50,19 @@ const expectedExportMap = Object.freeze({
     import: "./dist/vite.js",
   }),
 });
+const expectedPackageSurface = Object.freeze({
+  exports: expectedExportMap,
+  main: "./dist/index.js",
+  name: "liveview_react",
+  sideEffects: false,
+  type: "module",
+  types: "./dist/index.d.ts",
+});
+const publicEntryPoints = Object.freeze([
+  "liveview_react",
+  "liveview_react/server",
+  "liveview_react/vite",
+]);
 
 function run(command: string, args: readonly string[], cwd: string): string {
   return execFileSync(command, args, {
@@ -49,11 +72,35 @@ function run(command: string, args: readonly string[], cwd: string): string {
   });
 }
 
+function localMarkdownTargets(source: string): readonly string[] {
+  return [...source.matchAll(/\]\(([^)\s]+\.md(?:#[^)\s]*)?)\)/g)]
+    .map((match) => match[1])
+    .filter((target): target is string =>
+      Boolean(
+        target &&
+        !target.startsWith("/") &&
+        !target.includes(":") &&
+        !target.startsWith("#"),
+      ),
+    )
+    .map((target) => target.split("#", 1)[0] as string);
+}
+
 try {
   const packageManifest = JSON.parse(
     readFileSync(join(projectRoot, "package.json"), "utf8"),
-  ) as { readonly exports?: unknown };
-  deepStrictEqual(packageManifest.exports, expectedExportMap);
+  ) as PackageManifest;
+  deepStrictEqual(
+    {
+      exports: packageManifest.exports,
+      main: packageManifest.main,
+      name: packageManifest.name,
+      sideEffects: packageManifest.sideEffects,
+      type: packageManifest.type,
+      types: packageManifest.types,
+    },
+    expectedPackageSurface,
+  );
 
   const dryRunOutput = run(
     npmCommand,
@@ -82,9 +129,15 @@ try {
   if (!packResult) throw new Error("npm pack did not return a package result");
 
   const packedPaths = new Set(packResult.files.map((file) => file.path));
+  deepStrictEqual(
+    [...packedPaths].toSorted(),
+    dryRunResult.files.map((file) => file.path).toSorted(),
+    "npm pack dry-run and actual tarball file lists differ",
+  );
   const forbiddenPackedPath = [...packedPaths].find(
     (path) =>
       path.startsWith("dist/tests/") ||
+      path.endsWith(".map") ||
       path.includes(".bench.") ||
       path.includes(".test-support.") ||
       path.includes(".test."),
@@ -114,6 +167,22 @@ try {
     }
   }
 
+  for (const markdownPath of [...packedPaths].filter((path) =>
+    path.endsWith(".md"),
+  )) {
+    const source = readFileSync(join(projectRoot, markdownPath), "utf8");
+    for (const target of localMarkdownTargets(source)) {
+      const resolvedTarget = posix.normalize(
+        posix.join(posix.dirname(markdownPath), target),
+      );
+      if (!packedPaths.has(resolvedTarget)) {
+        throw new Error(
+          `${markdownPath} links to ${target}, which is missing from the packed package`,
+        );
+      }
+    }
+  }
+
   mkdirSync(consumerDirectory);
   writeFileSync(
     join(consumerDirectory, "package.json"),
@@ -137,6 +206,13 @@ try {
     ],
     consumerDirectory,
   );
+  const installedManifest = JSON.parse(
+    readFileSync(
+      join(consumerDirectory, "node_modules", "liveview_react", "package.json"),
+      "utf8",
+    ),
+  ) as PackageManifest;
+  deepStrictEqual(installedManifest, packageManifest);
   symlinkSync(
     join(projectRoot, "node_modules/react"),
     join(consumerDirectory, "node_modules/react"),
@@ -157,6 +233,20 @@ try {
     join(consumerDirectory, "node_modules/vite"),
     "junction",
   );
+
+  for (const entryPoint of publicEntryPoints) {
+    const importProgram = String.raw`
+      if ("window" in globalThis || "document" in globalThis) {
+        throw new Error("Node import probe unexpectedly has browser globals");
+      }
+      await import(${JSON.stringify(entryPoint)});
+    `;
+    run(
+      process.execPath,
+      ["--input-type=module", "--eval", importProgram],
+      consumerDirectory,
+    );
+  }
 
   const smokeProgram = String.raw`
     const client = await import("liveview_react");
@@ -186,7 +276,7 @@ try {
       "useLiveEvent",
       "useLiveForm",
       "useLiveNavigation",
-      "useLiveReact",
+      "useLiveViewReact",
       "useLiveUpload",
     ]);
     assertExactExports("Server entry point", server, [
@@ -200,8 +290,8 @@ try {
     if (typeof client.createLiveViewReact !== "function") {
       throw new Error("Root export is missing createLiveViewReact");
     }
-    if (typeof client.useLiveReact !== "function") {
-      throw new Error("Root export is missing useLiveReact");
+    if (typeof client.useLiveViewReact !== "function") {
+      throw new Error("Root export is missing useLiveViewReact");
     }
     if (typeof client.useLiveEvent !== "function") {
       throw new Error("Root export is missing useLiveEvent");
@@ -226,7 +316,7 @@ try {
     }
     const removedRootExports = [
       ["get", "Hooks"].join(""),
-      ["use", "Live", "View", "React"].join(""),
+      ["use", "Live", "React"].join(""),
     ];
     if (removedRootExports.some((name) => name in client)) {
       throw new Error("Root export still exposes a removed API");
@@ -276,13 +366,75 @@ try {
         useLiveForm,
         useLiveNavigation,
         useLiveUpload,
-        useLiveReact,
+        useLiveViewReact,
+        type ComponentProps,
         type ComponentRegistry,
+        type ComponentRegistryEntry,
+        type ConnectionSnapshot,
+        type CreateLiveViewReactOptions,
+        type EagerComponentEntry,
+        type EventPayload,
+        type HandleEvent,
+        type LazyComponentEntry,
+        type LazyComponentModule,
+        type LinkProps,
+        type LiveFormControl,
+        type LiveFormControlChangeEvent,
+        type LiveFormControlFocusEvent,
+        type LiveFormControlValue,
+        type LiveFormErrors,
+        type LiveFormFieldBinding,
+        type LiveFormFieldOptions,
+        type LiveFormHiddenInputProps,
+        type LiveFormInputProps,
+        type LiveFormOptions,
+        type LiveFormPath,
+        type LiveFormPathSegment,
+        type LiveFormProps,
+        type LiveFormRequired,
+        type LiveFormRevisionInputProps,
         type LiveFormServerSnapshot,
         type LiveFormSubmitEvent,
+        type LiveFormValues,
+        type LiveNavigation,
+        type LiveNavigationOptions,
+        type LiveUploadDropTargetProps,
         type LiveUploadConfig,
+        type LiveUploadEntry,
+        type LiveUploadError,
+        type LiveUploadSelection,
+        type LiveUploadSelectionStatus,
+        type LiveViewReact,
+        type LiveViewReactComponent,
+        type LiveViewReactContextValue,
+        type LiveViewReactHookDefinition,
+        type LiveViewReactHooks,
+        type LiveViewReactRootOptions,
+        type LiveViewReactRootWrapper,
+        type LiveViewReactRootWrapperContext,
+        type LiveViewTarget,
+        type PushEvent,
+        type PushEventTo,
+        type RemoveHandleEvent,
+        type SlotMap,
+        type StreamItem,
+        type StreamMap,
+        type TargetedEventReply,
+        type Upload,
+        type UploadFiles,
+        type UploadTo,
+        type UseEventReplyOptions,
+        type UseEventReplyResult,
+        type UseLiveFormResult,
+        type UseLiveUploadOptions,
+        type UseLiveUploadResult,
       } from "liveview_react";
-      import { createLiveViewReactServer } from "liveview_react/server";
+      import {
+        createLiveViewReactServer,
+        type CreateLiveViewReactServerOptions,
+        type LiveViewReactServer,
+        type ServerRenderRequest,
+      } from "liveview_react/server";
       import liveViewReactPlugin, {
         liveViewReactPlugin as namedLiveViewReactPlugin,
         type LiveViewReactPluginOptions,
@@ -294,15 +446,26 @@ try {
       } satisfies ComponentRegistry;
       const runtime = createLiveViewReact({ components });
       runtime.hooks.LiveViewReactHook.mounted;
-      createLiveViewReactServer({ components }).render({
+      const streams = {
+        rows: [{ __dom_id: "rows-1", count: 1 }],
+      } satisfies StreamMap;
+      const row: StreamItem = streams.rows[0];
+      void row;
+      const rendered = await createLiveViewReactServer({ components }).render({
         component: "Counter",
         events: {},
         identifierPrefix: "liveview-react-package-smoke-",
         props: { count: 1 },
+        slots: {},
+        streams,
+        version: 2,
       });
+      if (typeof rendered !== "string") {
+        throw new Error("Server render did not resolve to a string");
+      }
 
       function HookConsumer() {
-        const bridge = useLiveReact();
+        const bridge = useLiveViewReact();
         const form = useLiveForm(
           {
             id: "profile-form",
@@ -362,7 +525,7 @@ try {
       void useLiveForm;
       void useLiveNavigation;
       void useLiveUpload;
-      void useLiveReact;
+      void useLiveViewReact;
     `,
   );
   writeFileSync(

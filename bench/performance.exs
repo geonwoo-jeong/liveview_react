@@ -89,33 +89,39 @@ defmodule LiveViewReactBench do
       end)
 
     IO.puts("10,000-item stream operation paths")
-    report_stream_operation("insert", insert_stream, "upsert")
-    report_stream_operation("update_only", update_stream, "replace")
-    report_stream_operation("delete", delete_stream, "remove")
+    report_stream_operation("insert", insert_stream, @stream_count, @stream_count, 0)
+    report_stream_operation("update_only", update_stream, @stream_count, @stream_count, 0)
+    report_stream_operation("delete", delete_stream, 0, 0, @stream_count)
     IO.puts("")
   end
 
-  defp report_stream_operation(label, stream, expected_operation) do
-    patches = StreamAdapter.patches(%{rows: stream}, false)
+  defp report_stream_operation(label, stream, item_count, insert_count, delete_count) do
+    patches = StreamAdapter.incremental_patches(%{rows: stream})
     payload = Patch.serialize(patches)
+    [patch] = patches
+    frame = patch.value
 
     ensure!(
-      length(patches) == @stream_count,
-      "#{label} stream fixture must produce #{@stream_count} operations"
+      patch.op == "stream" and patch.path == "/rows",
+      "#{label} stream fixture must produce one canonical stream frame"
     )
 
     ensure!(
-      Enum.all?(patches, &(&1.op == expected_operation)),
-      "#{label} stream fixture produced an unexpected operation"
+      length(frame["items"]) == item_count and
+        length(frame["inserts"]) == insert_count and
+        length(frame["deletes"]) == delete_count,
+      "#{label} stream frame has unexpected item or metadata counts"
     )
 
     IO.puts("  #{label}")
-    IO.puts("    operations: #{length(patches)} #{expected_operation}")
+    IO.puts("    operations: 1 canonical stream frame")
+    IO.puts("    items/inserts/deletes: #{item_count}/#{insert_count}/#{delete_count}")
+
     IO.puts("    compact payload bytes: #{byte_size(payload)}")
 
     measure("#{label} adapter + serialization", 4, fn ->
       %{rows: stream}
-      |> StreamAdapter.patches(false)
+      |> StreamAdapter.incremental_patches()
       |> Patch.serialize()
     end)
 

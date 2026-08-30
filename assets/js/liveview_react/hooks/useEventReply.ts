@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import type { EventPayload, PushEvent } from "../types";
-import { useLiveReact } from "./useLiveReact";
+import { useRequiredClientBridge } from "../runtime/client-bridge-context";
 
 export class LiveEventReplyCancelledError extends Error {
   constructor(message = "Live event reply was cancelled") {
@@ -95,7 +95,7 @@ export function useEventReply<TReply, TData = TReply | null>(
 ): UseEventReplyResult<TReply, TData> {
   assertEventName(event);
   const timeout = assertOptions(options);
-  const { pushEvent } = useLiveReact();
+  const { pushEvent } = useRequiredClientBridge("useEventReply");
   const initialDataRef = useRef<TData>(getInitialData(options));
   const [state, setState] = useState<ReplyState<TData>>(() => ({
     data: initialDataRef.current,

@@ -22,8 +22,9 @@ defmodule LiveViewReact do
 
   @ssr_default true
   @diff_default true
-  @transport_version 1
+  @transport_version 2
   @reserved_assigns ~w(id component ssr diff socket __changed__ __given__)a
+  @unsafe_property_names ~w(__proto__ constructor prototype)
 
   @doc """
   Renders one explicitly identified React component root.
@@ -99,7 +100,6 @@ defmodule LiveViewReact do
       init: init,
       dead: dead,
       diff: diff,
-      streams_diff: Enum.any?(assigns, fn {_k, v} -> match?(%LiveStream{}, v) end),
       ssr: init and dead and ssr
     }
   end
@@ -131,24 +131,28 @@ defmodule LiveViewReact do
 
   # Builds the assigns consumed by the template: props, diffs, slots and SSR output.
   defp prepare_assigns(assigns, flags) do
-    transport_snapshot? = flags.init or flags.dead
+    connected_snapshot? = flags.init or flags.dead
     changed_assigns = Enum.filter(assigns, fn {key, _value} -> key_changed(assigns, key) end)
-    stream_assigns = if transport_snapshot?, do: assigns, else: changed_assigns
+    stream_assigns = if connected_snapshot?, do: assigns, else: changed_assigns
 
     {raw_props, _} = extract(assigns, assigns, :props)
     {events, events_changed?} = Events.extract(assigns, raw_props)
     props = Encoder.encode(raw_props, [])
-    props_transport = build_props_transport(props, assigns, transport_snapshot? or not flags.diff)
-    {streams, _} = extract(stream_assigns, assigns, :streams)
+    props_transport = build_props_transport(props, assigns, connected_snapshot? or not flags.diff)
+    {all_streams, _} = extract(assigns, assigns, :streams)
+
+    streams =
+      if connected_snapshot? do
+        all_streams
+      else
+        {changed_streams, _} = extract(stream_assigns, assigns, :streams)
+        changed_streams
+      end
+
     {slots, slots_changed?} = extract(assigns, assigns, :slots)
     slots_changed? = slots_changed? or possible_slot_removal?(assigns)
     rendered_slots = Slots.rendered_slot_map(slots)
-    validate_slot_prop_collisions!(raw_props, streams, events, rendered_slots)
-
-    streams_diff =
-      if flags.streams_diff,
-        do: StreamAdapter.patches(streams, transport_snapshot?),
-        else: []
+    validate_component_prop_collisions!(raw_props, all_streams, events, rendered_slots)
 
     assigns
     |> Map.put(:props, props)
@@ -157,15 +161,11 @@ defmodule LiveViewReact do
     |> Map.put(:props_payload, props_transport.snapshot)
     |> Map.put(:props_kind, props_transport.kind)
     |> Map.put(:props_diff, props_transport.patch)
-    |> Map.put(:streams_diff, Patch.serialize(streams_diff))
-    |> Map.put(:streams_kind, transport_kind(transport_snapshot?))
     |> Map.put(:slots, rendered_slots)
-    |> put_ssr_render(flags)
+    |> put_ssr_render(flags, streams)
+    |> put_stream_transport(streams, connected_snapshot?)
     |> mark_computed_changed(flags, slots_changed?, events_changed?)
   end
-
-  defp transport_kind(true), do: "snapshot"
-  defp transport_kind(false), do: "patch"
 
   defp build_props_transport(props, _assigns, true) do
     %{kind: "snapshot", snapshot: Patch.encode_object(props), patch: ""}
@@ -173,34 +173,60 @@ defmodule LiveViewReact do
 
   defp build_props_transport(props, assigns, false) do
     snapshot = Patch.encode_object(props)
-    patch = assigns |> calculate_props_diff(props) |> Patch.serialize()
 
-    if byte_size(patch) < byte_size(snapshot) do
-      %{kind: "patch", snapshot: nil, patch: patch}
-    else
+    if ambiguous_removed_assign?(assigns) do
       %{kind: "snapshot", snapshot: snapshot, patch: ""}
+    else
+      patch = assigns |> calculate_props_diff(props) |> Patch.serialize()
+
+      if byte_size(patch) < byte_size(snapshot) do
+        %{kind: "patch", snapshot: nil, patch: patch}
+      else
+        %{kind: "snapshot", snapshot: snapshot, patch: ""}
+      end
     end
   end
 
-  defp put_ssr_render(assigns, %{ssr: true}) do
-    request = ssr_request(assigns)
+  defp put_ssr_render(assigns, %{ssr: true}, streams) do
+    request = ssr_request(assigns, StreamAdapter.dead_render_snapshot(streams))
 
     case render_ssr(request) do
       nil ->
         put_ssr_result(assigns, nil, nil)
 
       ssr_render ->
-        descriptor = Map.put(request, :version, @transport_version)
-        put_ssr_result(assigns, ssr_render, descriptor)
+        put_ssr_result(assigns, ssr_render, request)
     end
   end
 
-  defp put_ssr_render(assigns, _flags), do: put_ssr_result(assigns, nil, nil)
+  defp put_ssr_render(assigns, _flags, _streams), do: put_ssr_result(assigns, nil, nil)
 
   defp put_ssr_result(assigns, ssr_render, hydration_descriptor) do
     assigns
     |> Map.put(:ssr_render, ssr_render)
     |> Map.put(:hydration_descriptor, hydration_descriptor)
+  end
+
+  defp put_stream_transport(%{hydration_descriptor: descriptor} = assigns, _streams, _snapshot?)
+       when is_map(descriptor) do
+    assigns
+    |> Map.put(:streams_diff, "")
+    |> Map.put(:streams_kind, "hydration")
+  end
+
+  defp put_stream_transport(assigns, streams, true) do
+    assigns
+    |> Map.put(
+      :streams_diff,
+      streams |> StreamAdapter.connected_snapshot_patches() |> Patch.serialize()
+    )
+    |> Map.put(:streams_kind, "snapshot")
+  end
+
+  defp put_stream_transport(assigns, streams, false) do
+    assigns
+    |> Map.put(:streams_diff, streams |> StreamAdapter.incremental_patches() |> Patch.serialize())
+    |> Map.put(:streams_kind, "patch")
   end
 
   # Marks the assigns we computed ourselves as changed so LiveView diffs them.
@@ -227,7 +253,7 @@ defmodule LiveViewReact do
   # Uses LiveView change tracking without adding a second server-side state store.
   # `add` is intentional for unknown/nil old values: for object properties it is
   # valid for both insertion and replacement, so an explicit nil prop is retained.
-  defp calculate_props_diff(%{__changed__: changed}, props) do
+  defp calculate_props_diff(%{__changed__: changed} = assigns, props) do
     changed
     |> Enum.sort_by(fn {key, _old_value} -> to_string(key) end)
     |> Enum.flat_map(fn {key, old_value} ->
@@ -236,13 +262,23 @@ defmodule LiveViewReact do
           diff_changed_prop(pointer_path(key), old_value, new_value)
 
         :error ->
-          removed_prop_diff(key, old_value)
+          removed_prop_diff(assigns, key, old_value)
       end
     end)
   end
 
-  defp removed_prop_diff(key, old_value) do
-    case normalize_key(%{__changed__: nil}, key, old_value) do
+  # LiveView may track a removed default slot as `inner_block: true` instead of
+  # retaining the prior slot entry. `inner_block` is reserved HEEx slot
+  # metadata and was never an ordinary React prop, so it must not produce a
+  # remove operation against the props object.
+  defp removed_prop_diff(_assigns, key, _old_value)
+       when key in [:inner_block, "inner_block"],
+       do: []
+
+  defp removed_prop_diff(assigns, key, old_value) do
+    current_value = Map.get(assigns, key, old_value)
+
+    case normalize_key(assigns, key, current_value) do
       :props -> [%{op: "remove", path: pointer_path(key)}]
       _type -> []
     end
@@ -317,15 +353,33 @@ defmodule LiveViewReact do
   defp possible_slot_removal?(%{__changed__: nil}), do: false
 
   defp possible_slot_removal?(%{__changed__: changed} = assigns) do
-    Enum.any?(changed, fn {key, _value} -> Map.get(assigns, key) == [] end)
+    Enum.any?(changed, fn {key, old_value} ->
+      Map.get(assigns, key) == [] or ambiguous_removed_assign?(assigns, key, old_value)
+    end)
   end
 
-  defp ssr_request(assigns) do
+  # A `true`/`nil` old value is LiveView's unknown-change sentinel, not enough
+  # information to distinguish a removed arbitrary prop from erased named-slot
+  # metadata. A full props snapshot clears either case correctly, and refreshing
+  # slots prevents an erased slot from surviving on the client.
+  defp ambiguous_removed_assign?(%{__changed__: changed} = assigns) do
+    Enum.any?(changed, fn {key, old_value} ->
+      ambiguous_removed_assign?(assigns, key, old_value)
+    end)
+  end
+
+  defp ambiguous_removed_assign?(assigns, key, old_value) do
+    old_value in [nil, true] and not Map.has_key?(assigns, key)
+  end
+
+  defp ssr_request(assigns, streams) do
     %{
+      version: @transport_version,
       component: assigns.component,
       events: assigns.events,
       identifierPrefix: identifier_prefix(assigns.id),
       props: assigns.props,
+      streams: streams,
       slots: assigns.slots
     }
   end
@@ -338,23 +392,73 @@ defmodule LiveViewReact do
     SSR.NotConfigured -> nil
   end
 
-  defp validate_slot_prop_collisions!(props, streams, events, slots) do
-    component_prop_names =
-      props
-      |> Map.keys()
-      |> Enum.concat(Map.keys(streams))
-      |> Enum.concat(Map.keys(events))
-      |> Enum.map(&to_string/1)
-      |> MapSet.new()
+  defp validate_component_prop_collisions!(props, streams, events, slots) do
+    namespaces = [
+      {"ordinary props", normalized_prop_names!(Map.keys(props), "ordinary props")},
+      {"streams", normalized_prop_names!(Map.keys(streams), "streams")},
+      {"event props", normalized_prop_names!(Map.keys(events), "event props")},
+      {"slot props",
+       normalized_prop_names!(
+         Enum.map(slots, fn {name, _} -> Slots.prop_name(name) end),
+         "slot props"
+       )}
+    ]
 
-    Enum.each(slots, fn {slot_name, _html} ->
-      prop_name = Slots.prop_name(slot_name)
+    namespaces
+    |> Enum.with_index()
+    |> Enum.each(&validate_namespace_against_rest!(&1, namespaces))
+  end
 
-      if MapSet.member?(component_prop_names, prop_name) do
-        raise ArgumentError,
-              "LiveViewReact.react/1 cannot define both prop #{inspect(prop_name)} and slot #{inspect(slot_name)}"
-      end
+  defp validate_namespace_against_rest!({{left_label, left_names}, index}, namespaces) do
+    namespaces
+    |> Enum.drop(index + 1)
+    |> Enum.each(fn {right_label, right_names} ->
+      validate_namespace_pair!(left_label, left_names, right_label, right_names)
     end)
+  end
+
+  defp validate_namespace_pair!(left_label, left_names, right_label, right_names) do
+    case left_names |> MapSet.intersection(right_names) |> Enum.sort() do
+      [name | _rest] ->
+        raise ArgumentError,
+              "LiveViewReact.react/1 cannot merge colliding React prop #{inspect(name)} " <>
+                "from #{left_label} and #{right_label}"
+
+      [] ->
+        :ok
+    end
+  end
+
+  defp normalized_prop_names!(names, namespace) do
+    Enum.reduce(names, MapSet.new(), fn key, normalized ->
+      name = normalize_prop_name!(key, namespace)
+
+      if MapSet.member?(normalized, name) do
+        raise ArgumentError,
+              "LiveViewReact.react/1 cannot merge duplicate React prop #{inspect(name)} " <>
+                "within #{namespace}"
+      end
+
+      MapSet.put(normalized, name)
+    end)
+  end
+
+  defp normalize_prop_name!(name, namespace) when is_atom(name),
+    do: name |> Atom.to_string() |> normalize_prop_name!(namespace)
+
+  defp normalize_prop_name!(name, namespace) when name in @unsafe_property_names do
+    raise ArgumentError,
+          "LiveViewReact.react/1 requires #{namespace} to reject prototype-sensitive " <>
+            "React prop #{inspect(name)}"
+  end
+
+  defp normalize_prop_name!(name, _namespace) when is_binary(name) and name != "", do: name
+  defp normalize_prop_name!(name, _namespace) when is_integer(name), do: Integer.to_string(name)
+
+  defp normalize_prop_name!(name, namespace) do
+    raise ArgumentError,
+          "LiveViewReact.react/1 requires #{namespace} to use non-empty string-compatible names, " <>
+            "got: #{inspect(name)}"
   end
 
   defp json(data), do: Jason.encode!(data, escape: :html_safe)

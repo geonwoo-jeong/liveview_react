@@ -1,15 +1,3 @@
-defmodule Mix.Tasks.LiveviewReact.Install.Helper do
-  @moduledoc false
-
-  defmacro with_igniter(do: available, else: unavailable) do
-    if Code.ensure_loaded?(Igniter) do
-      available
-    else
-      unavailable
-    end
-  end
-end
-
 defmodule Mix.Tasks.LiveviewReact.Install do
   @shortdoc "Installs LiveViewReact into a Phoenix application"
   @example "mix igniter.install liveview_react"
@@ -25,105 +13,122 @@ defmodule Mix.Tasks.LiveviewReact.Install do
   The public `--bun` option is accepted on both the first and later runs.
   """
 
-  import Mix.Tasks.LiveviewReact.Install.Helper
+  use Mix.Task
 
-  with_igniter do
-    use Igniter.Mix.Task
+  alias LiveViewReact.Installer.JavaScript
+  alias LiveViewReact.Installer.Loader
 
-    alias LiveViewReact.Installer.JavaScript
+  @igniter_args Module.concat(["Igniter", "Mix", "Task", "Args"])
+  @igniter_info Module.concat(["Igniter", "Mix", "Task", "Info"])
+  @igniter_task Module.concat(["Igniter", "Mix", "Task"])
+  @installer Module.concat(["LiveViewReact", "Igniter"])
+  @phoenix_vite_dep {:phoenix_vite, "~> 0.5"}
+  @vite_config_path "assets/vite.config.mjs"
+  @bun_schema [bun: :boolean]
+  @bun_aliases [b: :bun]
 
-    @phoenix_vite_dep {:phoenix_vite, "~> 0.5"}
-    @vite_config_path "assets/vite.config.mjs"
-    @bun_schema [bun: :boolean]
-    @bun_aliases [b: :bun]
+  @impl Mix.Task
+  def run(_argv) do
+    Mix.raise("Install LiveViewReact with `mix igniter.install liveview_react`.")
+  end
 
-    @impl Igniter.Mix.Task
-    def info(_argv, _composing_task) do
-      configured? =
-        phoenix_vite_already_configured?(
-          Mix.Project.config() |> Keyword.get(:deps, []),
-          read_vite_config(@vite_config_path)
-        )
+  @doc false
+  def installer?, do: true
 
-      %Igniter.Mix.Task.Info{
-        group: :liveview_react,
-        example: @example,
-        schema: installer_schema(configured?),
-        defaults: installer_defaults(configured?),
-        aliases: installer_aliases(configured?),
-        required: [],
-        installs: installer_installs(configured?)
-      }
+  @doc false
+  def supports_umbrella?, do: false
+
+  @doc false
+  def info(_argv, _composing_task) do
+    configured? =
+      phoenix_vite_already_configured?(
+        Mix.Project.config() |> Keyword.get(:deps, []),
+        read_vite_config(@vite_config_path)
+      )
+
+    struct!(@igniter_info,
+      group: :liveview_react,
+      example: @example,
+      schema: installer_schema(configured?),
+      defaults: installer_defaults(configured?),
+      aliases: installer_aliases(configured?),
+      required: [],
+      installs: installer_installs(configured?)
+    )
+  end
+
+  @doc false
+  def parse_argv(argv) do
+    positional_parser = Function.capture(@igniter_task, :__positional_args__!, 2)
+    options_parser = Function.capture(@igniter_task, :__options__!, 2)
+
+    {positional, argv_flags} =
+      positional_parser.(__MODULE__, argv)
+
+    options = options_parser.(__MODULE__, argv_flags)
+
+    struct!(@igniter_args,
+      positional: positional,
+      options: options,
+      argv: argv,
+      argv_flags: argv_flags
+    )
+  end
+
+  @doc false
+  def igniter(igniter) do
+    Loader.load!()
+    install = Function.capture(@installer, :install, 2)
+    install.(igniter, demo: igniter.args.options[:demo])
+  end
+
+  @doc false
+  def phoenix_vite_already_configured?(deps, vite_config_source)
+      when is_list(deps) and is_binary(vite_config_source) do
+    phoenix_vite_dependency?(deps) and phoenix_vite_plugin_configured?(vite_config_source)
+  end
+
+  def phoenix_vite_already_configured?(_deps, _vite_config_source), do: false
+
+  defp installer_schema(true), do: [demo: :boolean] ++ @bun_schema
+  defp installer_schema(false), do: [demo: :boolean]
+
+  defp installer_defaults(true), do: [demo: true, bun: false]
+  defp installer_defaults(false), do: [demo: true]
+
+  defp installer_aliases(true), do: @bun_aliases
+  defp installer_aliases(false), do: []
+
+  defp installer_installs(true), do: []
+  defp installer_installs(false), do: [@phoenix_vite_dep]
+
+  defp read_vite_config(path) do
+    case File.read(path) do
+      {:ok, source} -> source
+      {:error, _reason} -> nil
     end
+  end
 
-    @impl Igniter.Mix.Task
-    def supports_umbrella?, do: false
+  defp phoenix_vite_dependency?(deps) do
+    Enum.any?(deps, fn
+      {name, _requirement} when name == :phoenix_vite -> true
+      {name, _requirement, _opts} when name == :phoenix_vite -> true
+      _other -> false
+    end)
+  end
 
-    @impl Igniter.Mix.Task
-    def igniter(igniter) do
-      LiveViewReact.Igniter.install(igniter, demo: igniter.args.options[:demo])
-    end
-
-    @doc false
-    def phoenix_vite_already_configured?(deps, vite_config_source)
-        when is_list(deps) and is_binary(vite_config_source) do
-      phoenix_vite_dependency?(deps) and phoenix_vite_plugin_configured?(vite_config_source)
-    end
-
-    def phoenix_vite_already_configured?(_deps, _vite_config_source), do: false
-
-    defp installer_schema(true), do: [demo: :boolean] ++ @bun_schema
-    defp installer_schema(false), do: [demo: :boolean]
-
-    defp installer_defaults(true), do: [demo: true, bun: false]
-    defp installer_defaults(false), do: [demo: true]
-
-    defp installer_aliases(true), do: @bun_aliases
-    defp installer_aliases(false), do: []
-
-    defp installer_installs(true), do: []
-    defp installer_installs(false), do: [@phoenix_vite_dep]
-
-    defp read_vite_config(path) do
-      case File.read(path) do
-        {:ok, source} -> source
-        {:error, _reason} -> nil
-      end
-    end
-
-    defp phoenix_vite_dependency?(deps) do
-      Enum.any?(deps, fn
-        {name, _requirement} when name == :phoenix_vite -> true
-        {name, _requirement, _opts} when name == :phoenix_vite -> true
-        _other -> false
-      end)
-    end
-
-    defp phoenix_vite_plugin_configured?(source) do
-      with {:ok, ^source} <-
-             JavaScript.ensure_import(
-               source,
-               ~s(import { phoenixVitePlugin } from "phoenix_vite";),
-               "phoenix_vite"
-             ),
-           {:ok, configured?} <-
-             JavaScript.vite_plugin_present?(source, "phoenixVitePlugin") do
-        configured?
-      else
-        _missing_or_invalid -> false
-      end
-    end
-  else
-    use Mix.Task
-
-    @impl Mix.Task
-    def run(_argv) do
-      Mix.raise("""
-      The task `liveview_react.install` requires Igniter.
-
-      Add `{:igniter, "~> 0.8", only: [:dev, :test]}` to your dependencies,
-      fetch dependencies, and run `mix igniter.install liveview_react` again.
-      """)
+  defp phoenix_vite_plugin_configured?(source) do
+    with {:ok, ^source} <-
+           JavaScript.ensure_import(
+             source,
+             ~s(import { phoenixVitePlugin } from "phoenix_vite";),
+             "phoenix_vite"
+           ),
+         {:ok, configured?} <-
+           JavaScript.vite_plugin_present?(source, "phoenixVitePlugin") do
+      configured?
+    else
+      _missing_or_invalid -> false
     end
   end
 end

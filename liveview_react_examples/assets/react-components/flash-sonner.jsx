@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { useLiveReact } from "liveview_react";
+import { useLiveViewReact } from "liveview_react";
 import { Toaster, toast } from "sonner";
 
 export function FlashSonner({ flash }) {
-  const { pushEvent } = useLiveReact();
+  const { pushEvent } = useLiveViewReact();
 
   useEffect(() => {
     for (const kind of ["info", "error"]) {

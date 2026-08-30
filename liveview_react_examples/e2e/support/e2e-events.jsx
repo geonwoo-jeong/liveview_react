@@ -5,7 +5,7 @@ import {
   useLiveConnection,
   useLiveEvent,
   useLiveNavigation,
-  useLiveReact,
+  useLiveViewReact,
 } from "liveview_react";
 
 import {
@@ -14,7 +14,7 @@ import {
 } from "./e2e-events-harness";
 
 export function E2EEventsProbe({ onIncrement, patchStep }) {
-  const { pushEvent } = useLiveReact();
+  const { pushEvent } = useLiveViewReact();
   const connection = useLiveConnection();
   const navigation = useLiveNavigation();
   const eventReply = useEventReply("event_reply", {

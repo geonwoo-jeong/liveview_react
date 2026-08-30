@@ -1,6 +1,7 @@
 import { createElement, StrictMode, useEffect, type ReactNode } from "react";
 
 import { LiveViewReactProvider } from "./context";
+import { ClientBridgeProvider } from "./runtime/client-bridge-context";
 import { LiveViewConnectionProvider } from "./runtime/connection-context";
 import type { ConnectionStore } from "./runtime/connection";
 import type {
@@ -13,6 +14,7 @@ import type {
 export interface ComponentTreeOptions {
   readonly Component: LiveViewReactComponent;
   readonly children: readonly ReactNode[];
+  readonly clientContext?: LiveViewReactContextValue | null;
   readonly componentName?: string;
   readonly connectionStore: ConnectionStore;
   readonly context: LiveViewReactContextValue;
@@ -38,6 +40,7 @@ function HydrationCommit({ children, onCommit }: HydrationCommitProps) {
 export function createComponentTree({
   Component,
   children,
+  clientContext = null,
   componentName = "Anonymous",
   connectionStore,
   context,
@@ -57,14 +60,22 @@ export function createComponentTree({
         }),
       )
     : component;
-  const builtInProviders = createElement(
+  let builtInProviders: ReactNode = createElement(
+    LiveViewConnectionProvider,
+    { store: connectionStore },
+    wrappedComponent,
+  );
+  if (clientContext !== null) {
+    builtInProviders = createElement(
+      ClientBridgeProvider,
+      { value: clientContext },
+      builtInProviders,
+    );
+  }
+  builtInProviders = createElement(
     LiveViewReactProvider,
     { value: context },
-    createElement(
-      LiveViewConnectionProvider,
-      { store: connectionStore },
-      wrappedComponent,
-    ),
+    builtInProviders,
   );
   const stableTree = createElement(
     HydrationCommit,

@@ -12,17 +12,17 @@ reason to overwrite the file.
 
 ## Public-name changes
 
-| Old LiveReact surface | LiveViewReact surface |
-| --- | --- |
-| Hex `live_react` | Hex `liveview_react` |
-| npm `@mrdotb/live-react` | npm `liveview_react` |
-| `LiveReact` | `LiveViewReact` |
-| `LiveReact.SSR.ViteJS` | `LiveViewReact.SSR.ViteJS` |
-| `LiveReact.SSR.NodeJS` | `LiveViewReact.SSR.NodeJS` |
-| application config `:live_react` | application config `:liveview_react` |
-| hook key `ReactHook` | hook key `LiveViewReactHook` |
+| Old LiveReact surface             | LiveViewReact surface                       |
+| --------------------------------- | ------------------------------------------- |
+| Hex `live_react`                  | Hex `liveview_react`                        |
+| npm `@mrdotb/live-react`          | npm `liveview_react`                        |
+| `LiveReact`                       | `LiveViewReact`                             |
+| `LiveReact.SSR.ViteJS`            | `LiveViewReact.SSR.ViteJS`                  |
+| `LiveReact.SSR.NodeJS`            | `LiveViewReact.SSR.NodeJS`                  |
+| application config `:live_react`  | application config `:liveview_react`        |
+| hook key `ReactHook`              | hook key `LiveViewReactHook`                |
 | JavaScript `getHooks(components)` | `createLiveViewReact({ components }).hooks` |
-| HEEx `name="Counter"` | HEEx `component="Counter"` |
+| HEEx `name="Counter"`             | HEEx `component="Counter"`                  |
 
 Search the application for every old public name before removing the old
 dependency:
@@ -127,11 +127,13 @@ The generated installer entry point already performs this setup, so use the
 manual form only when integrating a custom asset entry.
 
 Old LiveReact injected socket operations into every component's root props.
-LiveViewReact does not. Read the owning bridge through `useLiveReact()`:
+LiveViewReact does not. `useLiveReact` was the old upstream `live_react` hook
+name, and this project intentionally does not expose it or keep it as a
+compatibility alias. Read the owning bridge through `useLiveViewReact()`:
 
 ```tsx
 const { pushEvent, pushEventTo, handleEvent, removeHandleEvent } =
-  useLiveReact();
+  useLiveViewReact();
 ```
 
 `pushEvent` and `pushEventTo` return Promises and have no callback overload.
@@ -151,7 +153,11 @@ keep an old server-only component map. Development SSR uses
 Pass Phoenix LiveView
 [LiveStream struct](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.LiveStream.html)
 values directly as props and use the transported `__dom_id` as the React key.
-Do not adapt the old compact patch payload in application code.
+The stream prop is present from disconnected SSR and no-JavaScript HTML through
+hydration, connected updates, and reconnects; empty streams arrive as `[]`.
+Do not adapt the old compact patch payload in application code. LiveViewReact
+accepts only its mandatory v2 initial frame and intentionally provides no v1
+parser, fallback, or compatibility mode.
 
 HEEx slots become inert React nodes. They cannot contain forms, `phx-*` or
 `data-phx-*` bindings, hooks, LiveComponents, or nested LiveViewReact roots.

@@ -131,3 +131,11 @@ export type ComponentRegistry = Readonly<
 
 export type ComponentProps = Readonly<Record<string, unknown>>;
 export type SlotMap = Readonly<Record<string, string>>;
+
+export interface StreamItem extends JsonObject {
+  readonly __dom_id: string;
+}
+
+export type StreamMap = Readonly<
+  Record<string, readonly Readonly<StreamItem>[]>
+>;

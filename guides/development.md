@@ -96,10 +96,10 @@ npm run benchmark
 ```
 
 The server report covers a one-field change in a 1,000-item nested list and a
-separate 1,000-field form, 10,000 stream insert/upsert, update-only/replace, and
-delete/remove operations, plus an injected deterministic SSR contract. It
-reports payload sizes and the relevant render, diff, adapter, and serialization
-times.
+separate 1,000-field form, plus 10,000-item canonical stream frames for insert,
+update-only, and delete workloads and an injected deterministic SSR contract.
+It reports payload sizes and the relevant render, diff, adapter, and
+serialization times.
 
 The JavaScript report covers full-versus-compact form work, generic 10,000-op
 compact decode/apply, 10,000 stream insert/update/delete application,

@@ -10,13 +10,17 @@ export const createMockLiveViewHook = (
   const id = Object.hasOwn(elementAttributes, "id")
     ? elementAttributes.id!
     : `mock-${++mockIdCounter}`;
+  const hydratesServerMarkup = Object.hasOwn(
+    targetAttributes,
+    "data-react-hydration",
+  );
   const attributes: Record<string, string> = {
-    "data-liveview-react-version": "1",
+    "data-liveview-react-version": "2",
     "data-events": "{}",
     "data-props": "{}",
     "data-props-kind": "snapshot",
     "data-slots": "{}",
-    "data-streams-kind": "snapshot",
+    "data-streams-kind": hydratesServerMarkup ? "hydration" : "snapshot",
     ...elementAttributes,
     id,
   };

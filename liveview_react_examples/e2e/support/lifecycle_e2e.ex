@@ -24,6 +24,12 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleE2E do
         <.link data-testid="navigate-away" navigate={~p"/e2e/lifecycle/destination"}>
           navigate away
         </.link>
+        <.link
+          data-testid="navigate-slow-away"
+          navigate={~p"/e2e/lifecycle/destination?slow=true"}
+        >
+          navigate away slowly
+        </.link>
       </div>
 
       <output data-testid="authoritative-a">{@server_a}</output>
@@ -173,12 +179,20 @@ defmodule LiveViewReactExamplesWeb.LiveLifecycleDestination do
 
   use LiveViewReactExamplesWeb, :live_view
 
+  @slow_connected_mount_ms 750
+
   def render(assigns) do
     ~H"""
     <main data-testid="lifecycle-destination" class="p-6">
       lifecycle destination <.link navigate={~p"/e2e/lifecycle"}>return to lifecycle harness</.link>
     </main>
     """
+  end
+
+  def mount(%{"slow" => "true"}, _session, socket) do
+    if connected?(socket), do: Process.sleep(@slow_connected_mount_ms)
+
+    {:ok, socket}
   end
 
   def mount(_params, _session, socket), do: {:ok, socket}

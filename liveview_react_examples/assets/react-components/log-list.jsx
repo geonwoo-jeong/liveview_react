@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useLiveEvent, useLiveReact } from "liveview_react";
+import { useLiveEvent, useLiveViewReact } from "liveview_react";
 
 export function LogList() {
-  const { pushEvent } = useLiveReact();
+  const { pushEvent } = useLiveViewReact();
   const [items, setItems] = useState([]);
   const [showItems, setShowItems] = useState(true);
   const [body, setBody] = useState("");

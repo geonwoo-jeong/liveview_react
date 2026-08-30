@@ -107,27 +107,80 @@ defmodule LiveViewReact.PatchTest do
       assert_raise ArgumentError, ~r/invalid patch operation/, fn ->
         Patch.serialize([%{op: "test", path: "", value: 123}])
       end
+
+      assert_raise ArgumentError, ~r/invalid patch operation/, fn ->
+        Patch.serialize([%{op: "replace", path: "/value", value: 123, legacy: true}])
+      end
     end
 
-    test "round-trips stream upsert and limit operations" do
+    test "round-trips one canonical stream frame with the deterministic s code" do
+      empty_frame = %{"items" => [], "inserts" => [], "deletes" => [], "reset" => false}
+
       patches = [
-        %{op: "upsert", path: "/users/-", value: %{"id" => 4, "name" => "Margaret Hamilton"}},
-        %{op: "limit", path: "/users", value: 10}
+        %{
+          op: "stream",
+          path: "/users",
+          value: %{
+            "items" => [%{"id" => 4, "__dom_id" => "users-4"}],
+            "inserts" => [["users-4", -1, 10, false]],
+            "deletes" => [],
+            "reset" => false
+          }
+        }
       ]
 
       assert serialize_deserialize(patches) == patches
+
+      encoded_frame = Patch.encode_object(empty_frame)
+
+      assert Patch.serialize([%{op: "stream", path: "/users", value: empty_frame}]) ==
+               "s6:/usersJ#{String.length(encoded_frame)}:#{encoded_frame}"
     end
 
-    test "rejects non-integer and unsafe stream limits" do
-      for value <- [1.5, 9_007_199_254_740_992] do
-        assert_raise ArgumentError, ~r/invalid patch operation/, fn ->
-          Patch.serialize([%{op: "limit", path: "/users", value: value}])
+    test "rejects malformed stream frames and paths on both codec boundaries" do
+      valid_frame = %{"items" => [], "inserts" => [], "deletes" => [], "reset" => false}
+
+      for invalid_frame <- [
+            %{},
+            Map.put(valid_frame, "legacy", true),
+            %{valid_frame | "reset" => nil},
+            %{valid_frame | "inserts" => [["users-1", -1, nil, nil]]},
+            %{
+              valid_frame
+              | "items" => [%{"__dom_id" => "users-1"}],
+                "inserts" => []
+            }
+          ] do
+        assert_raise ArgumentError, fn ->
+          Patch.serialize([%{op: "stream", path: "/users", value: invalid_frame}])
         end
       end
 
-      assert_raise ArgumentError, ~r/safe integer/, fn ->
-        Patch.deserialize("l6:/usersn3:1.5")
+      for invalid_path <- ["", "/", "/users/extra", "/users~2", "/__proto__"] do
+        assert_raise ArgumentError, ~r/stream JSON Pointer path/, fn ->
+          Patch.serialize([%{op: "stream", path: invalid_path, value: valid_frame}])
+        end
       end
+
+      malformed_frame = Patch.encode_object(%{})
+
+      assert_raise ArgumentError, ~r/stream frames require exactly/, fn ->
+        Patch.deserialize("s6:/usersJ#{String.length(malformed_frame)}:#{malformed_frame}")
+      end
+    end
+
+    test "rejects removed generic upsert and limit operations" do
+      for patch <- [
+            %{op: "upsert", path: "/users/-", value: %{"id" => 4}},
+            %{op: "limit", path: "/users", value: 10}
+          ] do
+        assert_raise ArgumentError, ~r/invalid patch operation/, fn ->
+          Patch.serialize([patch])
+        end
+      end
+
+      assert_raise ArgumentError, ~r/Unknown patch operation/, fn -> Patch.deserialize("u0:z") end
+      assert_raise ArgumentError, ~r/Unknown patch operation/, fn -> Patch.deserialize("l0:z") end
     end
   end
 

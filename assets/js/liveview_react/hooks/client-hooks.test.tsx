@@ -20,6 +20,7 @@ import {
 import { useLiveConnection } from "./useLiveConnection";
 import { useLiveEvent } from "./useLiveEvent";
 import { useLiveNavigation, type LiveNavigation } from "./useLiveNavigation";
+import { useLiveViewReact } from "./useLiveViewReact";
 
 interface Deferred<TValue> {
   readonly promise: Promise<TValue>;
@@ -466,6 +467,28 @@ describe("client hooks", () => {
 
     await act(async () => store.setConnected());
     expect(target.textContent).toBe("connected:stable");
+  });
+
+  it("explains the missing LiveViewReact context for useLiveViewReact", () => {
+    function Probe() {
+      useLiveViewReact();
+      return null;
+    }
+
+    expect(() => renderToStaticMarkup(<Probe />)).toThrow(
+      "useLiveViewReact requires the LiveViewReact context and must be called from a component rendered inside a LiveViewReact root",
+    );
+  });
+
+  it("explains the missing LiveViewReact root store for useLiveConnection", () => {
+    function Probe() {
+      useLiveConnection();
+      return null;
+    }
+
+    expect(() => renderToStaticMarkup(<Probe />)).toThrow(
+      "useLiveConnection requires the LiveViewReact connection store and must be called from a component rendered inside a LiveViewReact root",
+    );
   });
 
   it("renders useLiveNavigation without a bridge and throws only on invocation", () => {

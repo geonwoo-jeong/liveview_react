@@ -20,11 +20,38 @@ export default [
   Object.freeze({
     files: [
       ".github/scripts/*.mjs",
+      "bench/upstream_comparison/{config,prepare,shared}.mjs",
       "eslint.config.js",
       "liveview_react_examples/assets/vite.config.js",
     ],
     languageOptions: Object.freeze({
-      globals: globals.node,
+      globals: Object.freeze({
+        ...globals.node,
+        console: "readonly",
+        performance: "readonly",
+      }),
+      sourceType: "module",
+    }),
+  }),
+  Object.freeze({
+    files: ["bench/upstream_comparison/run.mjs"],
+    languageOptions: Object.freeze({
+      globals: Object.freeze({
+        ...globals.browser,
+        ...globals.node,
+        console: "readonly",
+        CustomEvent: "readonly",
+        document: "readonly",
+        HTMLElement: "readonly",
+        HTMLCanvasElement: "readonly",
+        HTMLInputElement: "readonly",
+        HTMLOptionElement: "readonly",
+        HTMLSelectElement: "readonly",
+        HTMLTextAreaElement: "readonly",
+        MutationObserver: "readonly",
+        performance: "readonly",
+        window: "readonly",
+      }),
       sourceType: "module",
     }),
   }),
