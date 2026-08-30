@@ -13,10 +13,6 @@ end
 defmodule Mix.Tasks.LiveviewReact.Install do
   @shortdoc "Installs LiveViewReact into a Phoenix application"
   @example "mix igniter.install liveview_react"
-  @phoenix_vite_dep {:phoenix_vite, "~> 0.5"}
-  @vite_config_path "assets/vite.config.mjs"
-  @bun_schema [bun: :boolean]
-  @bun_aliases [b: :bun]
 
   @moduledoc """
   #{@shortdoc}.
@@ -33,6 +29,11 @@ defmodule Mix.Tasks.LiveviewReact.Install do
 
   with_igniter do
     use Igniter.Mix.Task
+
+    @phoenix_vite_dep {:phoenix_vite, "~> 0.5"}
+    @vite_config_path "assets/vite.config.mjs"
+    @bun_schema [bun: :boolean]
+    @bun_aliases [b: :bun]
 
     @impl Igniter.Mix.Task
     def info(_argv, _composing_task) do
