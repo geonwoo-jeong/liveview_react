@@ -17,6 +17,7 @@ concurrency:
 
 env:
   MIX_ENV: test
+  ERL_COMPILER_OPTIONS: nowarn_deprecated_catch
 
 jobs:
   beam:
@@ -260,6 +261,7 @@ jobs:
         with:
           elixir-version: 1.20.4
           otp-version: 29.0.5
+          disable_problem_matchers: true
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
