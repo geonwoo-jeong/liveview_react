@@ -20,8 +20,8 @@ defmodule LiveViewReact do
   alias Phoenix.LiveView
   alias Phoenix.LiveView.LiveStream
 
-  @ssr_default Application.compile_env(:liveview_react, :ssr, true)
-  @diff_default Application.compile_env(:liveview_react, :enable_props_diff, true)
+  @ssr_default true
+  @diff_default true
   @transport_version 1
   @reserved_assigns ~w(id component ssr diff socket __changed__ __given__)a
 
@@ -92,8 +92,8 @@ defmodule LiveViewReact do
   defp render_flags(assigns) do
     init = Map.get(assigns, :__changed__) == nil
     dead = not LiveView.connected?(assigns.socket)
-    diff = boolean_flag!(assigns, :diff, @diff_default)
-    ssr = boolean_flag!(assigns, :ssr, @ssr_default)
+    diff = render_flag!(assigns, :diff, :enable_props_diff, @diff_default)
+    ssr = render_flag!(assigns, :ssr, :ssr, @ssr_default)
 
     %{
       init: init,
@@ -104,10 +104,10 @@ defmodule LiveViewReact do
     }
   end
 
-  defp boolean_flag!(assigns, key, default) do
+  defp render_flag!(assigns, key, config_key, default) do
     case Map.fetch(assigns, key) do
       :error ->
-        default
+        configured_boolean!(config_key, default)
 
       {:ok, value} when is_boolean(value) ->
         value
@@ -115,6 +115,17 @@ defmodule LiveViewReact do
       {:ok, value} ->
         raise ArgumentError,
               "LiveViewReact.react/1 requires #{inspect(key)} to be a boolean, got: #{inspect(value)}"
+    end
+  end
+
+  defp configured_boolean!(key, default) do
+    case Application.get_env(:liveview_react, key, default) do
+      value when is_boolean(value) ->
+        value
+
+      value ->
+        raise ArgumentError,
+              "LiveViewReact expects config :liveview_react, #{inspect(key)} to be a boolean, got: #{inspect(value)}"
     end
   end
 
