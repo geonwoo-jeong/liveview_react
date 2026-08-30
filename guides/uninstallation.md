@@ -56,7 +56,7 @@ not disposable installer state once the application adds components to it.
 Remove the Hex dependency from `mix.exs`:
 
 ```elixir
-{:liveview_react, "~> 0.1.0"}
+{:liveview_react, "~> 1.0"}
 ```
 
 Then clean the unused dependency after the application compiles without it:

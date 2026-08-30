@@ -61,7 +61,7 @@ defmodule LiveViewReactExamples.MixProject do
       # For development
       {:liveview_react, path: ".."}
       # For deployment
-      # {:liveview_react, "~> 0.1.0"}
+      # {:liveview_react, "~> 1.0"}
     ]
   end
 

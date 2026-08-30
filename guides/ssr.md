@@ -138,7 +138,7 @@ Add the optional NodeJS dependency when production SSR is enabled:
 ```elixir
 defp deps do
   [
-    {:liveview_react, "~> 0.1.0"},
+    {:liveview_react, "~> 1.0"},
     {:nodejs, "~> 3.1"}
   ]
 end

@@ -2,37 +2,58 @@
 name: Release
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Publish liveview_react to Hex after all dry-run checks pass
-        required: true
-        type: boolean
-        default: false
-      confirmation:
-        description: Type liveview_react after selecting the v<package-version> tag
-        required: false
-        type: string
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: liveview-react-release
   cancel-in-progress: false
 
 jobs:
+  release-please:
+    name: Release PR / GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - name: Run Release Please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
   dry-run:
     name: Package dry run
+    if: needs.release-please.outputs.release_created == 'true'
+    needs: release-please
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     env:
+      MIX_ENV: test
+      NO_COLOR: "1"
       ERL_COMPILER_OPTIONS: nowarn_deprecated_catch
     steps:
-      - name: Check out repository
+      - name: Check out released commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ needs.release-please.outputs.sha }}
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -49,7 +70,7 @@ jobs:
 
       - name: Run local release dry-run checks
         env:
-          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ github.sha }}
+          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ needs.release-please.outputs.tag_name }}
         run: |
           mix deps.get
           mix quality_full
@@ -61,15 +82,22 @@ jobs:
 
   browser-e2e:
     name: Example build and instrumented browser E2E
+    if: needs.release-please.outputs.release_created == 'true'
+    needs: release-please
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     env:
+      MIX_ENV: test
+      NO_COLOR: "1"
       ERL_COMPILER_OPTIONS: nowarn_deprecated_catch
     steps:
-      - name: Check out repository
+      - name: Check out released commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ needs.release-please.outputs.sha }}
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -113,8 +141,8 @@ jobs:
 
   publish:
     name: Publish liveview_react
-    if: inputs.publish && inputs.confirmation == 'liveview_react'
-    needs: [dry-run, browser-e2e]
+    if: needs.release-please.outputs.release_created == 'true'
+    needs: [release-please, dry-run, browser-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release
@@ -123,10 +151,11 @@ jobs:
     env:
       ERL_COMPILER_OPTIONS: nowarn_deprecated_catch
     steps:
-      - name: Check out repository
+      - name: Check out released commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ needs.release-please.outputs.sha }}
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -165,13 +194,25 @@ jobs:
       - name: Verify release metadata and synchronized version
         env:
           LIVEVIEW_REACT_RELEASE_REPOSITORY: ${{ vars.LIVEVIEW_REACT_RELEASE_REPOSITORY }}
+          RELEASE_PLEASE_SHA: ${{ needs.release-please.outputs.sha }}
+          RELEASE_PLEASE_TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          RELEASE_PLEASE_VERSION: ${{ needs.release-please.outputs.version }}
         run: |
+          manifest_version="$(node -p "JSON.parse(require('node:fs').readFileSync('.release-please-manifest.json','utf8'))['.']")"
           npm_version="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")"
-          mix_version="$(sed -nE 's/^  @version \"([^\"]+)\"$/\1/p' mix.exs)"
-          expected_tag="refs/tags/v${npm_version}"
+          lock_version="$(node -p "JSON.parse(require('node:fs').readFileSync('package-lock.json','utf8')).version")"
+          lock_root_version="$(node -p "JSON.parse(require('node:fs').readFileSync('package-lock.json','utf8')).packages[''].version")"
+          example_lock_version="$(node -p "JSON.parse(require('node:fs').readFileSync('liveview_react_examples/assets/package-lock.json','utf8')).packages['../..'].version")"
+          mix_version="$(sed -nE 's/^  @version \"([^\"]+)\".*$/\1/p' mix.exs)"
           test -n "$mix_version"
+          test "$manifest_version" = "$mix_version"
           test "$npm_version" = "$mix_version"
-          test "$GITHUB_REF" = "$expected_tag"
+          test "$lock_version" = "$mix_version"
+          test "$lock_root_version" = "$mix_version"
+          test "$example_lock_version" = "$mix_version"
+          test "$RELEASE_PLEASE_TAG_NAME" = "v${mix_version}"
+          test "$RELEASE_PLEASE_VERSION" = "$mix_version"
+          test "$(git rev-parse HEAD)" = "$RELEASE_PLEASE_SHA"
           test "$GITHUB_REPOSITORY" = "$LIVEVIEW_REACT_RELEASE_REPOSITORY"
 
       - name: Check Hex release state
@@ -184,16 +225,9 @@ jobs:
             echo "hex_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate Hex publication
-        if: steps.registry-state.outputs.hex_exists != 'true'
-        env:
-          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
-          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ github.ref_name }}
-        run: mix hex.publish --dry-run --yes
-
       - name: Publish Hex package
         if: steps.registry-state.outputs.hex_exists != 'true'
         env:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
-          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ github.ref_name }}
+          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ needs.release-please.outputs.tag_name }}
         run: mix hex.publish --yes

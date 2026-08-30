@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "bootstrap-sha": "fd96196fd5f8759dd7b96850b8244f62266dc13b",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "packages": {
+    ".": {
+      "package-name": "liveview_react",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "mix.exs"
+        },
+        {
+          "type": "json",
+          "path": "liveview_react_examples/assets/package-lock.json",
+          "jsonpath": "$['packages']['../..']['version']"
+        }
+      ]
+    }
+  }
+}

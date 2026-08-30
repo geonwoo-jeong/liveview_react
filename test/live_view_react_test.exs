@@ -52,7 +52,9 @@ defmodule LiveViewReactTest do
   test "uses the canonical OTP application identity" do
     removed_app = ["live", "react"] |> Enum.join("_") |> String.to_atom()
 
-    assert Application.spec(:liveview_react, :vsn) == ~c"0.1.0"
+    project_version = Mix.Project.config() |> Keyword.fetch!(:version) |> String.to_charlist()
+
+    assert Application.spec(:liveview_react, :vsn) == project_version
     assert :inets in Application.spec(:liveview_react, :applications)
     assert Application.spec(removed_app) == nil
   end

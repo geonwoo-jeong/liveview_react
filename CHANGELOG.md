@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0
+## 0.1.0 (unpublished development snapshot)
 
 - Established the new `liveview_react` Hex, OTP, and npm identity.
 - Made explicit `id` and `component` attributes the only component API.

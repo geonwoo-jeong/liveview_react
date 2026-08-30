@@ -1,7 +1,9 @@
 defmodule LiveViewReact.MixProject do
   use Mix.Project
 
+  # x-release-please-start-version
   @version "0.1.0"
+  # x-release-please-end
   @source_url "https://github.com/geonwoo-jeong/liveview_react"
 
   def project do
@@ -87,7 +89,7 @@ defmodule LiveViewReact.MixProject do
       },
       files:
         ~w(dist lib priv/installer guides/*.md guides/images/liveview_react_logo.png)s ++
-          ~w(CHANGELOG.md LICENSE.md README.md) ++
+          ~w(CHANGELOG.md LICENSE.md README.md README.ko.md README.ja.md README.zh-CN.md) ++
           ~w(mix.exs package.json .formatter.exs)
     ]
   end
@@ -101,6 +103,9 @@ defmodule LiveViewReact.MixProject do
       assets: %{"guides/images" => "guides/images"},
       extras: [
         "README.md",
+        "README.ko.md",
+        "README.ja.md",
+        "README.zh-CN.md",
         "guides/installation.md",
         "guides/getting_started.md",
         "guides/architecture.md",

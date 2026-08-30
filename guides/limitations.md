@@ -116,5 +116,5 @@ compatibility layer. See [Testing](testing.md) for the exact CI matrix.
 
 The real-browser contract is currently Chromium only. Firefox and WebKit may
 work through the same standards-based APIs, but they are not supported claims
-for 0.1.0 until equivalent lifecycle, hydration, form, upload, and navigation
-lanes run in CI.
+for the initial public release until equivalent lifecycle, hydration, form,
+upload, and navigation lanes run in CI.

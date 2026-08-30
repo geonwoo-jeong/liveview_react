@@ -13,9 +13,9 @@
 <p align="center">
   <a href="https://hexdocs.pm/liveview_react">HexDocs</a> ·
   <a href="https://hex.pm/packages/liveview_react">Hex</a> ·
-  <a href="guides/getting_started.md">Getting started</a> ·
-  <a href="guides/comparison.md">Comparison</a> ·
-  <a href="guides/limitations.md">Limitations</a>
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/getting_started.md">Getting started</a> ·
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/comparison.md">Comparison</a> ·
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/limitations.md">Limitations</a>
 </p>
 
 LiveViewReact mounts normal React roots inside Phoenix LiveView. LiveView
@@ -252,7 +252,7 @@ These are intentional product constraints, not compatibility gaps:
 - Production SSR requires a separately built server bundle, the optional
   `nodejs` dependency and supervisor, and Node.js in the release image. See
   [Deployment](guides/deployment.md).
-- The 0.1.0 browser support contract is Chromium only. Firefox and WebKit are
+- The initial public browser support contract is Chromium only. Firefox and WebKit are
   not claimed until equivalent browser lifecycle lanes run in CI.
 - This library is not a page-wide SPA router and does not make React the owner
   of remote data fetching.
@@ -306,9 +306,8 @@ This repository includes a Phoenix example application under
 verification.
 
 Maintainer-grade verification adds `mix quality_full`, `npm run quality:ci`,
-and the hosted release workflow. See
-[Testing](guides/testing.md) and [Releasing](guides/releasing.md) before
-cutting a Hex release.
+and the hosted Release Please workflow. See [Testing](guides/testing.md) and
+[Releasing](guides/releasing.md) before merging a release PR.
 
 ## Credits
 
