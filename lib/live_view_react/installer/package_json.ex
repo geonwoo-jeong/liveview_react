@@ -13,7 +13,7 @@ defmodule LiveViewReact.Installer.PackageJSON do
     {"@types/react", "^19.0.0", {:major, 19}},
     {"@types/react-dom", "^19.0.0", {:major, 19}},
     {"@vitejs/plugin-react", "^6.0.0", {:major, 6}},
-    {"typescript", "^7.0.0", {:major, 7}},
+    {"typescript", "^7.0.2", {:major, 7}},
     {"vite", "^8.0.0", {:major, 8}}
   ]
 
