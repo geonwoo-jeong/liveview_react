@@ -341,6 +341,26 @@ defmodule LiveViewReactTest do
       assert react.hydration == nil
     end
 
+    test "reads the SSR default from runtime application configuration" do
+      with_ssr_renderer(fn ->
+        with_application_env(:ssr, false, fn ->
+          refute render_react(&simple_component/1) |> Test.get_react() |> Map.fetch!(:ssr)
+        end)
+
+        with_application_env(:ssr, true, fn ->
+          assert render_react(&simple_component/1) |> Test.get_react() |> Map.fetch!(:ssr)
+        end)
+      end)
+    end
+
+    test "rejects a non-boolean SSR application configuration" do
+      with_application_env(:ssr, :invalid, fn ->
+        assert_raise ArgumentError,
+                     "LiveViewReact expects config :liveview_react, :ssr to be a boolean, got: :invalid",
+                     fn -> render_react(&simple_component/1) end
+      end)
+    end
+
     test "does not hide failures from a configured renderer" do
       assert_raise LiveViewReact.SSR.RenderError,
                    ~s(Unknown LiveViewReact component "Missing"),
@@ -589,6 +609,20 @@ defmodule LiveViewReactTest do
       case previous_renderer do
         {:ok, renderer} -> Application.put_env(:liveview_react, :ssr_module, renderer)
         :error -> Application.delete_env(:liveview_react, :ssr_module)
+      end
+    end
+  end
+
+  defp with_application_env(key, value, fun) do
+    previous_value = Application.fetch_env(:liveview_react, key)
+    Application.put_env(:liveview_react, key, value)
+
+    try do
+      fun.()
+    after
+      case previous_value do
+        {:ok, previous} -> Application.put_env(:liveview_react, key, previous)
+        :error -> Application.delete_env(:liveview_react, key)
       end
     end
   end
