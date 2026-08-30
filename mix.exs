@@ -86,7 +86,7 @@ defmodule LiveViewReact.MixProject do
         "Documentation" => "https://hexdocs.pm/liveview_react"
       },
       files:
-        ~w(dist guides lib priv/installer)s ++
+        ~w(dist lib priv/installer guides/*.md guides/images/liveview_react_logo.png)s ++
           ~w(CHANGELOG.md LICENSE.md README.md) ++
           ~w(mix.exs package.json .formatter.exs)
     ]

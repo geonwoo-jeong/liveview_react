@@ -36,7 +36,7 @@ mix docs --warnings-as-errors --output _build/docs
 mix run scripts/check_exdoc_links.exs _build/docs
 npm ci
 npm run quality:ci
-mix hex.publish --dry-run --yes
+mix hex.build --output _build/liveview_react.tar
 ```
 
 These commands install locked dependencies; run formatting, warnings, Credo,
@@ -45,7 +45,7 @@ validation, JavaScript formatting/lint/types/tests, package assembly, and
 dependency audits; and then build the exact JS payload that will ship inside
 the Hex artifact.
 
-Inspect the Hex dry-run file list. Generated source maps, private test
+Inspect the Hex artifact file list. Generated source maps, private test
 fixtures, credentials, dependency trees, and development-only sources must not
 leak into the shipped artifact.
 
@@ -59,7 +59,7 @@ version tag selected by the publish job.
 
 Run the `Release` workflow with `publish` left false first. Its `dry-run` job
 repeats compile, lint, ExUnit, API documentation rendering plus link
-validation, Vitest, package assembly, and `mix hex.publish --dry-run`. One
+validation, Vitest, package assembly, and a credential-free `mix hex.build`. One
 required job builds the
 example's production browser and SSR bundles, then separately runs the real
 Phoenix Chromium suite with the instrumented test endpoint and Vite development
@@ -78,6 +78,11 @@ release job verifies:
 - the current repository matches `LIVEVIEW_REACT_RELEASE_REPOSITORY`;
 - the artifact dry-run and example-build/browser jobs both passed; and
 - the package metadata matches the selected tag.
+
+When the version is not already present on Hex, the protected job runs an
+authenticated `mix hex.publish --dry-run --yes` immediately before the real
+publish command. This keeps the credential-free dry-run job safe while still
+exercising Hex's complete local publication checks before upload.
 
 The job publishes Hex only. If publication fails after the tag is cut, correct
 the external failure and rerun the same tagged workflow.

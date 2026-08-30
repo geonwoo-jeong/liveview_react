@@ -57,7 +57,7 @@ jobs:
           mix run scripts/check_exdoc_links.exs "$RUNNER_TEMP/docs"
           npm ci
           npm run quality:ci
-          mix hex.publish --dry-run --yes
+          mix hex.build --output "$RUNNER_TEMP/liveview_react.tar"
 
   browser-e2e:
     name: Example build and instrumented browser E2E
@@ -183,6 +183,13 @@ jobs:
           else
             echo "hex_exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Validate Hex publication
+        if: steps.registry-state.outputs.hex_exists != 'true'
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ github.ref_name }}
+        run: mix hex.publish --dry-run --yes
 
       - name: Publish Hex package
         if: steps.registry-state.outputs.hex_exists != 'true'

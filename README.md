@@ -13,9 +13,9 @@
 <p align="center">
   <a href="https://hexdocs.pm/liveview_react">HexDocs</a> ·
   <a href="https://hex.pm/packages/liveview_react">Hex</a> ·
-  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/getting_started.md">Getting started</a> ·
-  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/comparison.md">Comparison</a> ·
-  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/guides/limitations.md">Limitations</a>
+  <a href="guides/getting_started.md">Getting started</a> ·
+  <a href="guides/comparison.md">Comparison</a> ·
+  <a href="guides/limitations.md">Limitations</a>
 </p>
 
 LiveViewReact mounts normal React roots inside Phoenix LiveView. LiveView
