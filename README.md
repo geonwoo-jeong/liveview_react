@@ -7,6 +7,13 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/README.md">English</a> ·
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/README.ko.md">한국어</a> ·
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/README.ja.md">日本語</a> ·
+  <a href="https://github.com/geonwoo-jeong/liveview_react/blob/main/README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <strong>React 19 inside Phoenix LiveView, with LiveView still in charge.</strong>
 </p>
 
