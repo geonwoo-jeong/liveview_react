@@ -92,10 +92,6 @@ compatibility modes.
   warmup, and garbage collection make portable numeric gates misleading.
 - Semantic checks still fail on incorrect chunk topology, hydration output,
   stream results, remount behavior, or lifecycle cleanup.
-- The repository includes a temp-only upstream comparison harness, but it
-  still reports rather than gates. Cross-version event, listener, heap, and
-  real Phoenix navigation numbers remain partially non-comparable because the
-  shipped public surfaces differ across generations.
 
 ## Forms, uploads, and events
 

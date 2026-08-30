@@ -193,7 +193,3 @@ The manually dispatched `Benchmarks` workflow always performs the build and
 captures the raw benchmark logs. Numbers vary by machine, runtime warmup, and
 garbage collector, so there is no numeric regression threshold; semantic
 invariants still fail.
-
-The benchmark outputs capture the local environment, warmup/sample counts,
-per-sample timings, mean, standard deviation, variance, percentile summaries,
-package size, and explicit `N/A` reasons for unsupported surfaces.

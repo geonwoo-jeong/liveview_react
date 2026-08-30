@@ -45,11 +45,7 @@
       }
     },
     {
-      "files": [
-        ".github/scripts/**/*.mjs",
-        "bench/upstream_comparison/**/*.mjs",
-        "liveview_react_examples/assets/scripts/**/*.mjs"
-      ],
+      "files": ["liveview_react_examples/assets/scripts/**/*.mjs"],
       "rules": {
         "no-console": "off"
       }

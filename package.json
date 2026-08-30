@@ -86,7 +86,6 @@
     "prepack": "npm run build",
     "quality": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "quality:ci": "npm run quality && npm run pack:check && npm audit --audit-level=high",
-    "release:check": "mix deps.get && mix quality_full && npm ci && npm run quality:ci",
     "test": "vitest run",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test --config liveview_react_examples/playwright.config.ts",

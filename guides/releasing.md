@@ -43,6 +43,7 @@ mix deps.get
 mix quality_full
 npm ci
 npm run quality:ci
+mix hex.publish --dry-run --yes
 npm publish --dry-run --access public --ignore-scripts
 ```
 
