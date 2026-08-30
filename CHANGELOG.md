@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/geonwoo-jeong/liveview_react/compare/v0.1.0...v1.0.0) (2026-08-30)
+
+
+### Features
+
+* automate Hex releases with Release Please ([3cd9f44](https://github.com/geonwoo-jeong/liveview_react/commit/3cd9f4437b0c662fb95aac81a6aa9a60ad496d42))
+
+
+### Bug Fixes
+
+* remove untranslated README cross-links ([3ae0af2](https://github.com/geonwoo-jeong/liveview_react/commit/3ae0af28ab277cab089cbdd48ce84a3989579a4f))
+
 ## 0.1.0 (unpublished development snapshot)
 
 - Established the new `liveview_react` Hex, OTP, and npm identity.
