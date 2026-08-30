@@ -22,16 +22,16 @@ export function LiveViewReactProvider({
   );
 }
 
-export function useOptionalLiveReact(): LiveViewReactContextValue | null {
+export function useOptionalLiveViewReact(): LiveViewReactContextValue | null {
   return useContext(LiveViewReactContext);
 }
 
-export function useLiveReact(): LiveViewReactContextValue {
-  const context = useOptionalLiveReact();
+export function useLiveViewReact(): LiveViewReactContextValue {
+  const context = useOptionalLiveViewReact();
 
   if (context === null) {
     throw new Error(
-      "useLiveReact must be used inside a component mounted by liveview_react",
+      "useLiveViewReact requires the LiveViewReact context and must be called from a component rendered inside a LiveViewReact root",
     );
   }
 

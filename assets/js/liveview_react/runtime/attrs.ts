@@ -5,18 +5,23 @@ import {
   decodeCompactPatch,
 } from "../transport/compactPatch";
 import { applyPatch } from "../transport/jsonPatch";
+import { applyStreamPatch } from "../transport/streamPatch";
 import {
   assertTransportVersion,
-  readTransportKind,
+  readPropsTransportKind,
+  readStreamsTransportKind,
 } from "../transport/protocol";
-import type { ComponentProps, SlotMap } from "../types";
+import { materializeInitialFrame } from "../transport/initialFrame";
 import {
-  assertNoEventPropCollisions,
+  normalizeComponentProps,
+  normalizeSlotMap,
+} from "../transport/jsonData";
+import type { ComponentProps, SlotMap, StreamMap } from "../types";
+import {
   normalizeEventCommandMap,
   type EventCommandMap,
 } from "./event-callbacks";
 import { createIdentifierPrefix } from "./identifier-prefix";
-import { createSlotBindings, type SlotBindings } from "./slots";
 
 export interface HydrationSnapshot {
   readonly children: readonly ReactNode[];
@@ -24,17 +29,10 @@ export interface HydrationSnapshot {
   readonly props: ComponentProps;
 }
 
-const HYDRATION_FIELDS: readonly string[] = Object.freeze([
-  "component",
-  "events",
-  "identifierPrefix",
-  "props",
-  "slots",
-  "version",
-]);
-
-function isProps(value: unknown): value is ComponentProps {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export interface HydrationFrame {
+  readonly props: ComponentProps;
+  readonly snapshot: HydrationSnapshot;
+  readonly streams: StreamMap;
 }
 
 function readSnapshot(element: HTMLElement): ComponentProps {
@@ -43,13 +41,7 @@ function readSnapshot(element: HTMLElement): ComponentProps {
     throw new Error('Snapshot transport requires a "data-props" attribute');
   }
 
-  const value = decodeCompactJson(data);
-
-  if (!isProps(value)) {
-    throw new TypeError("data-props must contain an encoded object");
-  }
-
-  return value;
+  return normalizeComponentProps(decodeCompactJson(data), "data-props");
 }
 
 export function readComponentName(element: HTMLElement): string {
@@ -72,7 +64,7 @@ export function readElementId(element: HTMLElement): string {
 export function readInitialProps(element: HTMLElement): ComponentProps {
   assertTransportVersion(element);
 
-  if (readTransportKind(element, "data-props-kind") !== "snapshot") {
+  if (readPropsTransportKind(element) !== "snapshot") {
     throw new Error('Initial data-props-kind must be "snapshot"');
   }
 
@@ -103,11 +95,11 @@ export function readNextProps(
 ): ComponentProps {
   assertTransportVersion(element);
 
-  if (readTransportKind(element, "data-props-kind") === "snapshot") {
+  if (readPropsTransportKind(element) === "snapshot") {
     return readSnapshot(element);
   }
 
-  return requireProps(
+  return normalizeComponentProps(
     applyPatch(
       currentProps,
       decodeCompactPatch(element.getAttribute("data-props-diff")),
@@ -116,47 +108,56 @@ export function readNextProps(
   );
 }
 
-function requireProps(value: unknown, source: string): ComponentProps {
-  if (!isProps(value)) {
-    throw new TypeError(`${source} must be an object`);
-  }
-
-  return value;
-}
-
 export function readNextStreams(
   element: HTMLElement,
-  currentStreams: ComponentProps,
-): ComponentProps {
+  currentStreams: StreamMap,
+): StreamMap {
   assertTransportVersion(element);
 
-  const current =
-    readTransportKind(element, "data-streams-kind") === "snapshot"
-      ? {}
-      : currentStreams;
-
-  return requireProps(
-    applyPatch(
-      current,
-      decodeCompactPatch(element.getAttribute("data-streams-diff")),
-    ),
-    "data-streams-diff result",
+  const kind = readStreamsTransportKind(element);
+  if (kind === "hydration") {
+    throw new Error(
+      'data-streams-kind="hydration" is only valid for the initial hydration frame',
+    );
+  }
+  return applyStreamPatch(
+    currentStreams,
+    decodeCompactPatch(element.getAttribute("data-streams-diff")),
+    kind === "snapshot" ? "snapshot" : "incremental",
   );
 }
 
-export function readInitialStreams(element: HTMLElement): ComponentProps {
+export function readInitialStreams(
+  element: HTMLElement,
+  hydrationStreams: StreamMap | null,
+): StreamMap {
   assertTransportVersion(element);
 
-  if (readTransportKind(element, "data-streams-kind") !== "snapshot") {
-    throw new Error('Initial data-streams-kind must be "snapshot"');
+  const kind = readStreamsTransportKind(element);
+  if (kind === "hydration") {
+    const payload = element.getAttribute("data-streams-diff");
+    if (payload !== null && payload !== "") {
+      throw new Error(
+        'data-streams-kind="hydration" must omit data-streams-diff payload',
+      );
+    }
+    if (hydrationStreams === null) {
+      throw new Error(
+        'data-streams-kind="hydration" requires data-react-hydration',
+      );
+    }
+    return hydrationStreams;
+  }
+  if (kind !== "snapshot") {
+    throw new Error(
+      'Initial data-streams-kind must be "hydration" or "snapshot"',
+    );
   }
 
-  return requireProps(
-    applyPatch(
-      {},
-      decodeCompactPatch(element.getAttribute("data-streams-diff")),
-    ),
-    "initial data-streams-diff result",
+  return applyStreamPatch(
+    hydrationStreams ?? Object.freeze({}),
+    decodeCompactPatch(element.getAttribute("data-streams-diff")),
+    "snapshot",
   );
 }
 
@@ -173,21 +174,7 @@ function readSlotMap(element: HTMLElement): SlotMap {
     throw new TypeError("data-slots must contain valid JSON", { cause: error });
   }
 
-  return validateSlotMap(slots, "data-slots");
-}
-
-function validateSlotMap(value: unknown, source: string): SlotMap {
-  if (!isProps(value)) {
-    throw new TypeError(`${source} must contain a JSON object`);
-  }
-
-  for (const [slotName, slot] of Object.entries(value)) {
-    if (typeof slot !== "string") {
-      throw new TypeError(`Slot "${slotName}" in ${source} must be a string`);
-    }
-  }
-
-  return value as SlotMap;
+  return normalizeSlotMap(slots, "data-slots");
 }
 
 function decodeSlotMap(slots: SlotMap, source: string): SlotMap {
@@ -212,15 +199,7 @@ function decodeSlotMap(slots: SlotMap, source: string): SlotMap {
   );
 }
 
-export function readSlotBindings(
-  element: HTMLElement,
-  props: ComponentProps,
-): SlotBindings {
-  const slots = readDecodedSlots(element);
-  return createSlotBindings(slots, props, "data-slots");
-}
-
-function readDecodedSlots(element: HTMLElement): SlotMap {
+export function readDecodedSlots(element: HTMLElement): SlotMap {
   return decodeSlotMap(readSlotMap(element), "data-slots");
 }
 
@@ -228,7 +207,7 @@ export function readHydrationSnapshot(
   target: HTMLElement,
   expectedComponentName: string,
   expectedRootId: string,
-): HydrationSnapshot | null {
+): HydrationFrame | null {
   const rawDescriptor = target.getAttribute("data-react-hydration");
   if (rawDescriptor === null) return null;
 
@@ -241,57 +220,25 @@ export function readHydrationSnapshot(
     });
   }
 
-  if (!isProps(value)) {
-    throw new TypeError("data-react-hydration must contain a JSON object");
-  }
-
-  const unknownKey = Object.keys(value).find(
-    (key) => !HYDRATION_FIELDS.includes(key),
-  );
-  if (unknownKey) {
-    throw new TypeError(`Unknown data-react-hydration field "${unknownKey}"`);
-  }
-  if (value.version !== 1) {
-    throw new TypeError("data-react-hydration version must be 1");
-  }
-  if (
-    typeof value.component !== "string" ||
-    value.component !== expectedComponentName
-  ) {
+  const frame = materializeInitialFrame(value, "data-react-hydration");
+  if (frame.component !== expectedComponentName) {
     throw new Error(
       `Hydration component must match data-component "${expectedComponentName}"`,
     );
   }
-  if (
-    typeof value.identifierPrefix !== "string" ||
-    value.identifierPrefix !== createIdentifierPrefix(expectedRootId)
-  ) {
+  if (frame.identifierPrefix !== createIdentifierPrefix(expectedRootId)) {
     throw new Error(
       `Hydration identifierPrefix must match the root id "${expectedRootId}"`,
     );
   }
-  if (!isProps(value.props)) {
-    throw new TypeError("data-react-hydration props must be an object");
-  }
-
-  const events = normalizeEventCommandMap(
-    value.events,
-    "data-react-hydration events",
-  );
-  assertNoEventPropCollisions(value.props, events, "data-react-hydration");
-  const slots = validateSlotMap(value.slots, "data-react-hydration slots");
-  const slotBindings = createSlotBindings(
-    slots,
-    value.props,
-    "data-react-hydration slots",
-  );
   return Object.freeze({
-    children: slotBindings.children,
-    events,
-    props: Object.freeze({
-      ...value.props,
-      ...slotBindings.props,
+    props: frame.props,
+    snapshot: Object.freeze({
+      children: frame.children,
+      events: frame.events,
+      props: frame.componentProps,
     }),
+    streams: frame.streams,
   });
 }
 

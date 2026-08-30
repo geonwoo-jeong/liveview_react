@@ -11,7 +11,38 @@ interface LazyAudit {
   readonly resolved: number;
 }
 
+interface NavigationGapInterval {
+  readonly durationMs: number;
+  readonly endedAt: number;
+  readonly frameSamples: number;
+  readonly mutationSamples: number;
+  readonly observedBy: readonly string[];
+  readonly startedAt: number;
+}
+
+interface NavigationContinuitySnapshot {
+  readonly cleanupObservedBeforeDestination: boolean;
+  readonly destinationPresent: boolean;
+  readonly gapIntervals: readonly NavigationGapInterval[];
+  readonly inertSnapshotObserved: boolean;
+  readonly mutationBatches: number;
+  readonly outgoingPresent: boolean;
+  readonly totalFrames: number;
+}
+
+interface NavigationContinuityAudit {
+  readonly snapshot: () => NavigationContinuitySnapshot;
+  readonly stop: () => NavigationContinuitySnapshot;
+}
+
 interface LifecycleAudit {
+  readonly destroyedCallbacks: readonly {
+    readonly elementConnected: boolean;
+    readonly elementId: string;
+    readonly mainConnected: boolean | null;
+    readonly mainLoading: boolean | null;
+    readonly mainPresent: boolean;
+  }[];
   readonly hydrationMounts: readonly {
     readonly rootId: string;
     readonly descriptorPresent: boolean;
@@ -38,6 +69,7 @@ interface LifecycleAudit {
 
 declare global {
   interface Window {
+    __liveViewReactNavigationAudit?: NavigationContinuityAudit;
     readonly __liveViewReactE2E: {
       readonly corruptNextPropsPatch: (rootId: string) => void;
       readonly resolveLazy: (gate: "update" | "destroy") => Promise<number>;
@@ -66,6 +98,168 @@ async function openHarness(page: Page): Promise<void> {
 
 async function readAudit(page: Page): Promise<LifecycleAudit> {
   return page.evaluate(() => window.__liveViewReactE2E.snapshot());
+}
+
+async function installNavigationContinuityAudit(
+  page: Page,
+  cleanupBefore: number,
+): Promise<void> {
+  await page.evaluate((initialCleanupCount) => {
+    const previousAudit = window.__liveViewReactNavigationAudit;
+    previousAudit?.stop();
+    delete window.__liveViewReactNavigationAudit;
+
+    const outgoingSelector = '[data-testid="probe-a"]';
+    const destinationSelector = '[data-testid="lifecycle-destination"]';
+    let animationFrameId: number | null = null;
+    let cleanupObservedBeforeDestination = false;
+    let currentGap: {
+      readonly frameSamples: number;
+      readonly mutationSamples: number;
+      readonly observedBy: readonly string[];
+      readonly startedAt: number;
+    } | null = null;
+    let gapIntervals: readonly NavigationGapInterval[] = [];
+    let inertSnapshotObserved = false;
+    let mutationBatches = 0;
+    let stopped = false;
+    let totalFrames = 0;
+
+    const readPresence = () => ({
+      destinationPresent: document.querySelector(destinationSelector) !== null,
+      outgoingPresent: document.querySelector(outgoingSelector) !== null,
+    });
+
+    const sample = (source: "frame" | "install" | "mutation" | "stop") => {
+      const { destinationPresent, outgoingPresent } = readPresence();
+      const cleanupCount =
+        window.__liveViewReactE2E.snapshot().probes.a?.cleanups ?? 0;
+      const outgoingTarget = document.querySelector(
+        "#e2e-root-a [data-react-target]",
+      );
+      if (!destinationPresent && cleanupCount > initialCleanupCount) {
+        cleanupObservedBeforeDestination = true;
+      }
+      if (
+        !destinationPresent &&
+        outgoingTarget?.hasAttribute(
+          "data-liveview-react-navigation-snapshot",
+        ) &&
+        outgoingTarget.hasAttribute("inert")
+      ) {
+        inertSnapshotObserved = true;
+      }
+      const gapPresent = !outgoingPresent && !destinationPresent;
+      const now = performance.now();
+
+      if (gapPresent) {
+        const existing = currentGap ?? {
+          frameSamples: 0,
+          mutationSamples: 0,
+          observedBy: [],
+          startedAt: now,
+        };
+        currentGap = {
+          ...existing,
+          frameSamples: existing.frameSamples + (source === "frame" ? 1 : 0),
+          mutationSamples:
+            existing.mutationSamples + (source === "mutation" ? 1 : 0),
+          observedBy: existing.observedBy.includes(source)
+            ? existing.observedBy
+            : [...existing.observedBy, source],
+        };
+        return;
+      }
+
+      if (currentGap) {
+        gapIntervals = [
+          ...gapIntervals,
+          {
+            durationMs: now - currentGap.startedAt,
+            endedAt: now,
+            frameSamples: currentGap.frameSamples,
+            mutationSamples: currentGap.mutationSamples,
+            observedBy: currentGap.observedBy,
+            startedAt: currentGap.startedAt,
+          },
+        ];
+        currentGap = null;
+      }
+    };
+
+    const snapshot = (): NavigationContinuitySnapshot => {
+      const { destinationPresent, outgoingPresent } = readPresence();
+      const openGap = currentGap
+        ? [
+            {
+              durationMs: performance.now() - currentGap.startedAt,
+              endedAt: performance.now(),
+              frameSamples: currentGap.frameSamples,
+              mutationSamples: currentGap.mutationSamples,
+              observedBy: currentGap.observedBy,
+              startedAt: currentGap.startedAt,
+            },
+          ]
+        : [];
+
+      return {
+        cleanupObservedBeforeDestination,
+        destinationPresent,
+        gapIntervals: [...gapIntervals, ...openGap],
+        inertSnapshotObserved,
+        mutationBatches,
+        outgoingPresent,
+        totalFrames,
+      };
+    };
+
+    const observer = new MutationObserver(() => {
+      mutationBatches += 1;
+      sample("mutation");
+    });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+
+    const auditFrame = () => {
+      if (stopped) return;
+      totalFrames += 1;
+      sample("frame");
+      animationFrameId = requestAnimationFrame(auditFrame);
+    };
+
+    sample("install");
+    animationFrameId = requestAnimationFrame(auditFrame);
+
+    window.__liveViewReactNavigationAudit = Object.freeze({
+      snapshot,
+      stop() {
+        if (!stopped) {
+          stopped = true;
+          observer.disconnect();
+          if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+          animationFrameId = null;
+          sample("stop");
+        }
+
+        return snapshot();
+      },
+    });
+  }, cleanupBefore);
+}
+
+async function stopNavigationContinuityAudit(
+  page: Page,
+): Promise<NavigationContinuitySnapshot> {
+  return page.evaluate(() => {
+    const audit = window.__liveViewReactNavigationAudit;
+    if (!audit) throw new Error("Navigation continuity audit is not installed");
+
+    const result = audit.stop();
+    delete window.__liveViewReactNavigationAudit;
+    return result;
+  });
 }
 
 async function resolveLazy(
@@ -147,6 +341,70 @@ test("conditional removal and LiveView navigation clean roots exactly once", asy
     .toBe(2);
 
   expect((await readAudit(page)).probes.b?.cleanups).toBe(2);
+  expect(pageErrors()).toEqual([]);
+});
+
+test("slow LiveView navigation preserves the outgoing React frame until destination replacement", async ({
+  page,
+}) => {
+  const pageErrors = capturePageErrors(page);
+  await openHarness(page);
+
+  await page.getByTestId("local-increment-a").click();
+  await expect(page.getByTestId("local-a")).toHaveText("1");
+  const cleanupBefore = (await readAudit(page)).probes.a?.cleanups;
+  expect(cleanupBefore).toBe(1);
+  await installNavigationContinuityAudit(page, cleanupBefore ?? 0);
+
+  await page.getByTestId("navigate-slow-away").click();
+  await page.waitForFunction(
+    (expectedCleanup) => {
+      const audit = window.__liveViewReactE2E.snapshot();
+      return (
+        audit.probes.a?.cleanups === expectedCleanup &&
+        document.querySelector('[data-testid="lifecycle-destination"]') ===
+          null &&
+        document.querySelector(
+          "#e2e-root-a [data-react-target][data-liveview-react-navigation-snapshot][inert]",
+        ) !== null &&
+        document.querySelector('[data-testid="probe-a"]') !== null
+      );
+    },
+    (cleanupBefore ?? 0) + 1,
+  );
+  await expect(page.getByTestId("probe-a")).toBeVisible();
+  await expect(page.getByTestId("local-a")).toHaveText("1");
+  await page.evaluate(() => {
+    const button = document.querySelector('[data-testid="local-increment-a"]');
+    button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await expect(page.getByTestId("local-a")).toHaveText("1");
+  await expect(page.getByTestId("lifecycle-destination")).toBeVisible();
+  await expect
+    .poll(async () => (await readAudit(page)).probes.a?.cleanups)
+    .toBe((cleanupBefore ?? 0) + 1);
+
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  const continuity = await stopNavigationContinuityAudit(page);
+
+  expect(continuity.destinationPresent).toBe(true);
+  expect(continuity.cleanupObservedBeforeDestination).toBe(true);
+  expect(continuity.inertSnapshotObserved).toBe(true);
+  expect(continuity.totalFrames).toBeGreaterThan(1);
+  expect(continuity.mutationBatches).toBeGreaterThan(0);
+  expect(
+    continuity.gapIntervals,
+    `navigation continuity audit: ${JSON.stringify({
+      continuity,
+      destroyedCallbacks: (await readAudit(page)).destroyedCallbacks,
+    })}`,
+  ).toEqual([]);
+  expect((await readAudit(page)).probes.a?.cleanups).toBe(2);
   expect(pageErrors()).toEqual([]);
 });
 

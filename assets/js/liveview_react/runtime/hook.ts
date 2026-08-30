@@ -8,13 +8,16 @@ import {
   isFullSnapshotFrame,
   UnsupportedTransportVersionError,
 } from "../transport/protocol";
+import { materializeComponentInputs } from "../transport/initialFrame";
 import type {
   ComponentProps,
   ComponentRegistry,
   LiveViewReactRootOptions,
+  StreamMap,
 } from "../types";
 import {
   findReactTarget,
+  readDecodedSlots,
   readComponentName,
   readElementId,
   readEvents,
@@ -23,7 +26,6 @@ import {
   readHydrationSnapshot,
   readNextProps,
   readNextStreams,
-  readSlotBindings,
 } from "./attrs";
 import {
   createHookEventExecutor,
@@ -31,6 +33,12 @@ import {
   type LiveViewHookHost,
 } from "./bridge";
 import type { EventCommandMap } from "./event-callbacks";
+import {
+  acquireNavigationDestroyLease,
+  captureNavigationVisualSnapshot,
+  type NavigationDestroyLease,
+  type NavigationVisualSnapshot,
+} from "./navigation-destroy";
 import { RootController, type RootRenderSnapshot } from "./root";
 
 export interface LiveViewReactHookDefinition {
@@ -45,6 +53,10 @@ interface HookRuntimeOptions {
   readonly components: ComponentRegistry;
   readonly hook: LiveViewHookHost;
   readonly rootOptions: LiveViewReactRootOptions;
+}
+
+interface HookRuntimeDestroyOptions {
+  readonly navigation?: boolean;
 }
 
 interface FullSyncSocket {
@@ -75,13 +87,15 @@ class HookRuntime {
   readonly #element: HTMLElement;
   readonly #elementId: string;
   readonly #liveSocket: unknown;
+  readonly #navigation: NavigationDestroyLease;
   readonly #root: RootController;
+  readonly #target: HTMLElement;
   #destroyed = false;
   #events: EventCommandMap;
   #loadGeneration = 0;
   #props: ComponentProps;
   #recovering = false;
-  #streams: ComponentProps;
+  #streams: StreamMap;
 
   constructor({ components, hook, rootOptions }: HookRuntimeOptions) {
     this.#componentName = readComponentName(hook.el);
@@ -89,16 +103,20 @@ class HookRuntime {
     this.#element = hook.el;
     this.#elementId = readElementId(hook.el);
     this.#liveSocket = hook.liveSocket;
-    this.#props = readInitialProps(hook.el);
-    this.#events = readEvents(hook.el);
-    this.#streams = readInitialStreams(hook.el);
     const target = findReactTarget(hook.el);
-    const hydrationSnapshot = readHydrationSnapshot(
+    this.#target = target;
+    const hydrationFrame = readHydrationSnapshot(
       target,
       this.#componentName,
       this.#elementId,
     );
-    if (hydrationSnapshot) {
+    this.#props = readInitialProps(hook.el);
+    this.#events = readEvents(hook.el);
+    this.#streams = readInitialStreams(
+      hook.el,
+      hydrationFrame?.streams ?? null,
+    );
+    if (hydrationFrame) {
       target.removeAttribute("data-react-hydration");
     }
     this.#root = new RootController({
@@ -107,11 +125,12 @@ class HookRuntime {
       context: createLiveViewBridge(hook),
       element: hook.el,
       executeEventCommands: createHookEventExecutor(hook),
-      hydrate: hydrationSnapshot !== null,
-      ...(hydrationSnapshot ? { hydrationSnapshot } : {}),
+      hydrate: hydrationFrame !== null,
+      ...(hydrationFrame ? { hydrationSnapshot: hydrationFrame.snapshot } : {}),
       initialSnapshot: this.#snapshot(),
       target,
     });
+    this.#navigation = acquireNavigationDestroyLease(this.#element);
   }
 
   mount(): void {
@@ -130,7 +149,7 @@ class HookRuntime {
         try {
           this.#root.mount(Component);
         } catch (error: unknown) {
-          reportAsyncFailure(
+          this.#failAsyncMount(
             `Unable to mount component "${this.#componentName}"`,
             error,
           );
@@ -138,7 +157,7 @@ class HookRuntime {
       },
       (error: unknown) => {
         if (!this.#isActive(generation)) return;
-        reportAsyncFailure(
+        this.#failAsyncMount(
           `Unable to load component "${this.#componentName}"`,
           error,
         );
@@ -159,7 +178,7 @@ class HookRuntime {
     if (this.#recovering && !isFullSnapshotFrame(this.#element)) return;
 
     let nextProps: ComponentProps;
-    let nextStreams: ComponentProps;
+    let nextStreams: StreamMap;
     let nextEvents: EventCommandMap;
 
     try {
@@ -203,12 +222,44 @@ class HookRuntime {
     this.#root.setDisconnected();
   }
 
-  destroy(): void {
+  destroy(options: HookRuntimeDestroyOptions = {}): void {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#recovering = false;
     this.#loadGeneration += 1;
-    this.#root.destroy();
+
+    const reservation = options.navigation
+      ? this.#navigation.reserve(this.#element)
+      : null;
+    let snapshot: NavigationVisualSnapshot | null = null;
+    if (reservation && this.#root.mounted) {
+      try {
+        snapshot = captureNavigationVisualSnapshot(this.#target);
+      } catch {
+        reservation.cancel();
+      }
+    }
+
+    let destroyError: unknown;
+    let destroyFailed = false;
+    try {
+      this.#root.destroy();
+    } catch (error: unknown) {
+      destroyFailed = true;
+      destroyError = error;
+    }
+
+    try {
+      if (snapshot?.restore()) {
+        if (!reservation?.commit(snapshot.remove)) snapshot.remove();
+      } else {
+        reservation?.cancel();
+      }
+    } finally {
+      this.#navigation.release();
+    }
+
+    if (destroyFailed) throw destroyError;
   }
 
   #assertIdentity(): void {
@@ -270,6 +321,23 @@ class HookRuntime {
     );
   }
 
+  #failAsyncMount(message: string, error: unknown): void {
+    try {
+      this.destroy();
+    } catch (destroyError: unknown) {
+      reportAsyncFailure(
+        message,
+        new AggregateError(
+          [error, destroyError],
+          "Component failure was followed by a teardown failure",
+        ),
+      );
+      return;
+    }
+
+    reportAsyncFailure(message, error);
+  }
+
   #isActive(generation: number): boolean {
     return (
       !this.#destroyed &&
@@ -280,19 +348,23 @@ class HookRuntime {
 
   #snapshot(
     props: ComponentProps = this.#props,
-    streams: ComponentProps = this.#streams,
+    streams: StreamMap = this.#streams,
     events: EventCommandMap = this.#events,
   ): RootRenderSnapshot {
-    const componentProps = Object.freeze({ ...props, ...streams });
-    const slots = readSlotBindings(this.#element, componentProps);
+    const materialized = materializeComponentInputs(
+      {
+        events,
+        props,
+        slots: readDecodedSlots(this.#element),
+        streams,
+      },
+      "LiveView transport frame",
+    );
 
     return Object.freeze({
-      children: slots.children,
-      events,
-      props: Object.freeze({
-        ...componentProps,
-        ...slots.props,
-      }),
+      children: materialized.children,
+      events: materialized.events,
+      props: materialized.props,
     });
   }
 }
@@ -343,7 +415,7 @@ export function createLiveViewReactHook(
       if (!runtime) return;
 
       runtimes.delete(this);
-      runtime.destroy();
+      runtime.destroy({ navigation: true });
     },
   });
 }

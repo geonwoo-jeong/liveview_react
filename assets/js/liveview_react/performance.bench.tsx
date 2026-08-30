@@ -12,7 +12,8 @@ import {
   type PatchOperation,
 } from "./transport/compactPatch";
 import { applyPatch } from "./transport/jsonPatch";
-import type { LiveViewReactContextValue } from "./types";
+import { applyStreamPatch } from "./transport/streamPatch";
+import type { LiveViewReactContextValue, StreamMap } from "./types";
 
 const OPERATION_COUNT = 10_000;
 const FORM_SECTION_COUNT = 50;
@@ -66,10 +67,10 @@ const lazyChunkSizes = Object.values(lazyChunkPaths).every((path) =>
     })
   : null;
 
-const emptyStreamDocument: StreamDocument = Object.freeze({
+const emptyStreamDocument: StreamMap = Object.freeze({
   rows: Object.freeze([]),
 });
-const populatedStreamDocument: StreamDocument = Object.freeze({
+const populatedStreamDocument: StreamMap = Object.freeze({
   rows: Object.freeze(
     Array.from({ length: OPERATION_COUNT }, (_, index) =>
       Object.freeze({
@@ -80,18 +81,14 @@ const populatedStreamDocument: StreamDocument = Object.freeze({
     ),
   ),
 });
-const streamInsertOperations = createStreamOperations("insert");
-const streamUpdateOperations = createStreamOperations("update");
-const streamDeleteOperations = createStreamOperations("delete");
+const streamInsertFrame = createStreamFrame("insert");
+const streamUpdateFrame = createStreamFrame("update");
+const streamDeleteFrame = createStreamFrame("delete");
 
 interface ControllerOptions {
   readonly hydrate?: boolean;
   readonly hydrationSnapshot?: RootRenderSnapshot;
   readonly id: string;
-}
-
-interface StreamDocument {
-  readonly rows: readonly StreamRow[];
 }
 
 interface StreamRow {
@@ -171,33 +168,50 @@ function encodeStringReplace(path: string, value: string): string {
   return `r${path.length}:${path}s${value.length}:${value}`;
 }
 
-function createStreamOperations(
+function createStreamFrame(
   kind: "delete" | "insert" | "update",
 ): readonly PatchOperation[] {
-  return Object.freeze(
-    Array.from({ length: OPERATION_COUNT }, (_, index) => {
-      const domId = `row-${index}`;
-
-      if (kind === "delete") {
-        return Object.freeze({
-          op: "remove" as const,
-          path: `/rows/$$${domId}`,
-        });
-      }
-
-      const value = Object.freeze({
-        __dom_id: domId,
-        label: `${kind}-${index}`,
-        version: kind === "update" ? 2 : 1,
-      });
-
-      return Object.freeze({
-        op: kind === "update" ? ("replace" as const) : ("upsert" as const),
-        path: kind === "update" ? `/rows/$$${domId}` : "/rows/-",
-        value,
-      });
-    }),
+  const domIds = Object.freeze(
+    Array.from({ length: OPERATION_COUNT }, (_, index) => `row-${index}`),
   );
+  const items =
+    kind === "delete"
+      ? Object.freeze([])
+      : Object.freeze(
+          domIds.map((domId, index) =>
+            Object.freeze({
+              __dom_id: domId,
+              label: `${kind}-${index}`,
+              version: kind === "update" ? 2 : 1,
+            }),
+          ),
+        );
+  const inserts =
+    kind === "delete"
+      ? Object.freeze([])
+      : Object.freeze(
+          Array.from({ length: domIds.length }, (_, index) =>
+            Object.freeze([
+              domIds[domIds.length - index - 1]!,
+              -1,
+              null,
+              kind === "update",
+            ] as const),
+          ),
+        );
+
+  return Object.freeze([
+    Object.freeze({
+      op: "stream" as const,
+      path: "/rows",
+      value: Object.freeze({
+        deletes: kind === "delete" ? domIds : Object.freeze([]),
+        inserts,
+        items,
+        reset: false,
+      }),
+    }),
+  ]);
 }
 
 function snapshot(value: number): RootRenderSnapshot {
@@ -468,31 +482,37 @@ assertInvariant(
   "the generic compact fixture must apply its final replacement",
 );
 
-const insertedStream = applyPatch(emptyStreamDocument, streamInsertOperations);
-const updatedStream = applyPatch(
-  populatedStreamDocument,
-  streamUpdateOperations,
+const insertedStream = applyStreamPatch(
+  emptyStreamDocument,
+  streamInsertFrame,
+  "incremental",
 );
-const deletedStream = applyPatch(
+const updatedStream = applyStreamPatch(
   populatedStreamDocument,
-  streamDeleteOperations,
+  streamUpdateFrame,
+  "incremental",
+);
+const deletedStream = applyStreamPatch(
+  populatedStreamDocument,
+  streamDeleteFrame,
+  "incremental",
 );
 assertInvariant(
-  insertedStream.rows.length === OPERATION_COUNT &&
-    insertedStream.rows.at(-1)?.__dom_id === "row-9999",
+  insertedStream.rows!.length === OPERATION_COUNT &&
+    insertedStream.rows!.at(-1)?.__dom_id === "row-9999",
   "10,000 stream inserts must preserve order and identity",
 );
 assertInvariant(
-  updatedStream.rows.length === OPERATION_COUNT &&
-    updatedStream.rows[5_000]?.version === 2,
+  updatedStream.rows!.length === OPERATION_COUNT &&
+    updatedStream.rows![5_000]?.version === 2,
   "10,000 id-addressed stream updates must preserve cardinality",
 );
 assertInvariant(
-  deletedStream.rows.length === 0,
+  deletedStream.rows!.length === 0,
   "10,000 id-addressed stream deletes must remove every row",
 );
 assertInvariant(
-  populatedStreamDocument.rows[5_000]?.version === 1,
+  populatedStreamDocument.rows![5_000]?.version === 1,
   "stream patch application must preserve the input snapshot",
 );
 
@@ -542,15 +562,15 @@ describe("generic 10,000-operation compact transport", () => {
 
 describe("10,000-item stream application", () => {
   bench("apply 10,000 stream inserts", () => {
-    applyPatch(emptyStreamDocument, streamInsertOperations);
+    applyStreamPatch(emptyStreamDocument, streamInsertFrame, "incremental");
   });
 
   bench("apply 10,000 id-addressed stream updates", () => {
-    applyPatch(populatedStreamDocument, streamUpdateOperations);
+    applyStreamPatch(populatedStreamDocument, streamUpdateFrame, "incremental");
   });
 
   bench("apply 10,000 id-addressed stream deletes", () => {
-    applyPatch(populatedStreamDocument, streamDeleteOperations);
+    applyStreamPatch(populatedStreamDocument, streamDeleteFrame, "incremental");
   });
 });
 

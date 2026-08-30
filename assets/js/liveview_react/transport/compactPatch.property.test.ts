@@ -66,7 +66,7 @@ const jsonValueArbitrary: fc.Arbitrary<JsonValue> = fc.oneof(
 
 const valueOperationArbitrary: fc.Arbitrary<PatchOperation> = fc
   .tuple(
-    fc.constantFrom<"add" | "replace" | "upsert">("add", "replace", "upsert"),
+    fc.constantFrom<"add" | "replace" | "stream">("add", "replace", "stream"),
     pointerPathArbitrary,
     jsonValueArbitrary,
   )
@@ -75,16 +75,8 @@ const valueOperationArbitrary: fc.Arbitrary<PatchOperation> = fc
 const removeOperationArbitrary: fc.Arbitrary<PatchOperation> =
   pointerPathArbitrary.map((path) => ({ op: "remove", path }));
 
-const limitOperationArbitrary: fc.Arbitrary<PatchOperation> = fc
-  .tuple(pointerPathArbitrary, fc.integer({ min: -1_000_000, max: 1_000_000 }))
-  .map(([path, value]) => ({ op: "limit", path, value }));
-
 const patchArbitrary = fc.array(
-  fc.oneof(
-    valueOperationArbitrary,
-    removeOperationArbitrary,
-    limitOperationArbitrary,
-  ),
+  fc.oneof(valueOperationArbitrary, removeOperationArbitrary),
   { minLength: 1, maxLength: 18 },
 );
 
@@ -116,8 +108,7 @@ function encodeOperation(operation: PatchOperation): string {
     add: "a",
     remove: "d",
     replace: "r",
-    upsert: "u",
-    limit: "l",
+    stream: "s",
   }[operation.op];
   const path = `${operation.path.length}:${operation.path}`;
 

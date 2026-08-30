@@ -59,8 +59,7 @@ Pure behavioral research and independent implementation should remain in the
 reference-only section or in `UPSTREAM.md`; do not mislabel it as incorporated
 source.
 
-The imported Hex and npm manifests do not yet include this newly added Phase 0
-notice file. Phase 1 must add `THIRD_PARTY_NOTICES.md` alongside `LICENSE.md` to
-both package file lists before the first `liveview_react` package build or
-release. Future release archives must also include any additional license texts
-required by incorporated dependencies.
+The Hex and npm manifests include `THIRD_PARTY_NOTICES.md` alongside
+`LICENSE.md`, and the artifact checks require both files. Future release
+archives must also include any additional license texts required by
+incorporated dependencies.

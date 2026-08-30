@@ -60,11 +60,42 @@ const OP_CODES = {
   add: "a",
   remove: "d",
   replace: "r",
-  upsert: "u",
-  limit: "l",
+  stream: "s",
 } as const;
 
 type TestPatchOperation = readonly [keyof typeof OP_CODES, string, unknown?];
+
+type TestStreamItem = Readonly<Record<string, unknown>> & {
+  readonly __dom_id: string;
+};
+
+interface TestStreamFrameOptions {
+  readonly deletes?: readonly string[];
+  readonly inserts?: readonly (readonly [
+    domId: string,
+    at: number,
+    limit: number | null,
+    updateOnly: boolean,
+  ])[];
+  readonly reset?: boolean;
+}
+
+export function streamFrame(
+  items: readonly TestStreamItem[],
+  options: TestStreamFrameOptions = {},
+): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    items: Object.freeze([...items]),
+    inserts: Object.freeze(
+      options.inserts?.map((insert) => Object.freeze([...insert])) ??
+        items.map((item) =>
+          Object.freeze([item.__dom_id, -1, null, false] as const),
+        ),
+    ),
+    deletes: Object.freeze([...(options.deletes ?? [])]),
+    reset: options.reset ?? false,
+  });
+}
 
 function encodeValue(value: unknown): string {
   if (value === null) return "z";
@@ -112,14 +143,18 @@ export function hydrationDescriptor(
   slots: Readonly<Record<string, string>> = {},
   component = "TestComponent",
   events: Readonly<Record<string, unknown>> = {},
+  streams: Readonly<
+    Record<string, readonly Readonly<Record<string, unknown>>[]>
+  > = {},
 ): string {
   return JSON.stringify({
+    version: 2,
     component,
-    events,
     identifierPrefix: createIdentifierPrefix(rootId),
     props,
+    streams,
+    events,
     slots,
-    version: 1,
   });
 }
 

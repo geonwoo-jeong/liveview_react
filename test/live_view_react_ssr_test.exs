@@ -75,10 +75,14 @@ defmodule LiveViewReact.SSRTest do
     on_exit(fn -> :telemetry.detach(handler_id) end)
 
     request = %{
+      version: 2,
       component: "Counter",
       events: %{},
       identifierPrefix: "liveview-react-counter-",
       props: %{count: 1, test_pid: self()},
+      streams: %{
+        "users" => [%{"id" => 1, "name" => "Ada", "__dom_id" => "users-1"}]
+      },
       slots: %{"default" => "Count"}
     }
 
@@ -131,9 +135,66 @@ defmodule LiveViewReact.SSRTest do
     Application.put_env(:liveview_react, :ssr_module, Renderer)
     invalid_request = render_request() |> Map.delete(:events)
 
-    assert_raise SSR.RenderError, ~r/expected component, events, identifierPrefix/, fn ->
+    assert_raise SSR.RenderError, ~r/exact transport v2 frame/, fn ->
       render_unchecked(invalid_request)
     end
+  end
+
+  test "requires the mandatory v2 version and streams fields without legacy fallback" do
+    Application.put_env(:liveview_react, :ssr_module, Renderer)
+
+    for invalid_request <- [
+          Map.delete(render_request(), :streams),
+          %{render_request() | version: 1},
+          Map.put(render_request(), :legacy, true)
+        ] do
+      assert_raise SSR.RenderError, ~r/exact transport v2 frame/, fn ->
+        render_unchecked(invalid_request)
+      end
+    end
+  end
+
+  test "rejects malformed stream snapshots before invoking the renderer" do
+    Application.put_env(:liveview_react, :ssr_module, Renderer)
+
+    malformed = [
+      %{users: []},
+      %{"users" => [%{"id" => 1}]},
+      %{"users" => [%{"__dom_id" => ""}]},
+      %{
+        "users" => [
+          %{"__dom_id" => "users-1"},
+          %{"__dom_id" => "users-1"}
+        ]
+      }
+    ]
+
+    Enum.each(malformed, fn streams ->
+      assert_raise SSR.RenderError, ~r/exact transport v2 frame/, fn ->
+        SSR.render(render_request(%{streams: streams}))
+      end
+
+      refute_received {:render_request, _request}
+    end)
+  end
+
+  test "rejects malformed events and component-prop namespace collisions" do
+    Application.put_env(:liveview_react, :ssr_module, Renderer)
+
+    invalid_requests = [
+      render_request(%{events: %{"increment" => []}}),
+      render_request(%{events: %{"onIncrement" => [["bad-op", %{}]]}}),
+      render_request(%{props: %{"users" => []}, streams: %{"users" => []}}),
+      render_request(%{events: %{"onSave" => []}, slots: %{"onSave" => "slot"}}),
+      render_request(%{props: %{"children" => "prop"}, slots: %{"default" => "slot"}}),
+      render_request(%{props: %{"constructor" => "unsafe"}}),
+      render_request(%{slots: %{"children" => "reserved"}})
+    ]
+
+    Enum.each(invalid_requests, fn request ->
+      assert_raise SSR.RenderError, ~r/exact transport v2 frame/, fn -> SSR.render(request) end
+      refute_received {:render_request, _request}
+    end)
   end
 
   describe "Vite request bounds" do
@@ -186,10 +247,12 @@ defmodule LiveViewReact.SSRTest do
   defp render_request(overrides \\ %{}) do
     Map.merge(
       %{
+        version: 2,
         component: "Counter",
         events: %{},
         identifierPrefix: "liveview-react-counter-",
         props: %{},
+        streams: %{},
         slots: %{}
       },
       overrides

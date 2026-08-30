@@ -57,6 +57,8 @@ defmodule LiveViewReact.EventsTest do
       react = callback_component() |> Test.get_react()
 
       assert_receive {:ssr_request, request}
+      assert request.version == 2
+      assert request.streams == %{}
       assert request.events |> Jason.encode!() |> Jason.decode!() == react.events
       assert react.hydration["events"] == react.events
     end)

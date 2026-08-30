@@ -1,6 +1,7 @@
 import type { DragEvent } from "react";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { useRequiredClientBridge } from "../runtime/client-bridge-context";
 import type {
   EventPayload,
   LiveUploadConfig,
@@ -16,7 +17,6 @@ import {
   type NormalizedLiveUploadEntry,
 } from "../uploads";
 import { useLiveConnection } from "./useLiveConnection";
-import { useLiveReact } from "./useLiveReact";
 
 const EMPTY_SELECTIONS: readonly LiveUploadSelection[] = Object.freeze([]);
 
@@ -317,7 +317,7 @@ export function useLiveUpload(
   config: LiveUploadConfig,
   options: UseLiveUploadOptions = {},
 ): UseLiveUploadResult {
-  const bridge = useLiveReact();
+  const bridge = useRequiredClientBridge("useLiveUpload");
   const connection = useLiveConnection();
   const normalizedConfig = useMemo(
     () => normalizeLiveUploadConfig(config),

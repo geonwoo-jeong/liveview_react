@@ -52,9 +52,9 @@ import {
   type LiveFormState,
   type PendingLiveFormValidation,
 } from "./live-form-runtime";
+import { useRequiredClientBridge } from "../runtime/client-bridge-context";
 import { useLiveConnection } from "./useLiveConnection";
 import { useLiveEvent } from "./useLiveEvent";
-import { useLiveReact } from "./useLiveReact";
 
 export {
   LiveFormSubmitCancelledError,
@@ -106,7 +106,7 @@ export function useLiveForm<
     [serverForm],
   );
   const validatedOptions = validateLiveFormOptions(options);
-  const bridge = useLiveReact();
+  const bridge = useRequiredClientBridge("useLiveForm");
   const connection = useLiveConnection();
   const [state, setState] = useState<LiveFormState<TValues, TSubmitReply>>(() =>
     createInitialLiveFormState(snapshot),

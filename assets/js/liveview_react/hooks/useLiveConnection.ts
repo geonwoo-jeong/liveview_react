@@ -8,7 +8,7 @@ function useConnectionStore() {
 
   if (store === null) {
     throw new Error(
-      "useLiveConnection must be used inside a component mounted by liveview_react",
+      "useLiveConnection requires the LiveViewReact connection store and must be called from a component rendered inside a LiveViewReact root",
     );
   }
 

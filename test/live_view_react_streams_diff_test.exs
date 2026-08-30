@@ -38,6 +38,15 @@ defmodule LiveViewReact.StreamsDiffTest do
     |> Enum.reject(&(&1["op"] == "test"))
   end
 
+  defp frame(items, inserts, deletes \\ [], reset \\ false) do
+    %{
+      "items" => items,
+      "inserts" => inserts,
+      "deletes" => deletes,
+      "reset" => reset
+    }
+  end
+
   defmodule StreamUser do
     @moduledoc false
     @derive {LiveViewReact.Encoder, only: [:id, :name, :age]}
@@ -56,16 +65,20 @@ defmodule LiveViewReact.StreamsDiffTest do
       react = render_react_assigns(%{users: stream, __changed__: nil})
 
       expected_patches = [
-        %{"op" => "add", "path" => "/users", "value" => []},
         %{
-          "op" => "upsert",
-          "path" => "/users/-",
-          "value" => %{"__dom_id" => "users-1", "age" => 30, "id" => 1, "name" => "Alice"}
-        },
-        %{
-          "op" => "upsert",
-          "path" => "/users/-",
-          "value" => %{"__dom_id" => "users-2", "age" => 25, "id" => 2, "name" => "Bob"}
+          "op" => "stream",
+          "path" => "/users",
+          "value" =>
+            frame(
+              [
+                %{"__dom_id" => "users-1", "age" => 30, "id" => 1, "name" => "Alice"},
+                %{"__dom_id" => "users-2", "age" => 25, "id" => 2, "name" => "Bob"}
+              ],
+              [
+                ["users-2", -1, nil, false],
+                ["users-1", -1, nil, false]
+              ]
+            )
         }
       ]
 
@@ -74,7 +87,7 @@ defmodule LiveViewReact.StreamsDiffTest do
       assert_patches_equal(react.streams_diff, expected_patches)
     end
 
-    test "inserting item to LiveStream creates upsert operation" do
+    test "inserting item to LiveStream creates a canonical stream frame" do
       new_user = %StreamUser{id: 3, name: "Charlie", age: 28}
       stream = LiveStream.new(:users, make_ref(), [], [])
       stream = LiveStream.insert_item(stream, new_user, -1, nil, false)
@@ -90,14 +103,18 @@ defmodule LiveViewReact.StreamsDiffTest do
 
       assert_patches_equal(react.streams_diff, [
         %{
-          "op" => "upsert",
-          "path" => "/users/-",
-          "value" => %{"id" => 3, "name" => "Charlie", "age" => 28, "__dom_id" => "users-3"}
+          "op" => "stream",
+          "path" => "/users",
+          "value" =>
+            frame(
+              [%{"id" => 3, "name" => "Charlie", "age" => 28, "__dom_id" => "users-3"}],
+              [["users-3", -1, nil, false]]
+            )
         }
       ])
     end
 
-    test "deleting item from LiveStream creates remove operation" do
+    test "deleting item from LiveStream stays inside its canonical frame" do
       user_to_delete = %StreamUser{id: 2, name: "Bob", age: 25}
       stream = LiveStream.new(:users, make_ref(), [], [])
       stream = LiveStream.delete_item(stream, user_to_delete)
@@ -109,10 +126,16 @@ defmodule LiveViewReact.StreamsDiffTest do
           __changed__: %{users: LiveStream.new(:users, make_ref(), [], [])}
         })
 
-      assert_patches_equal(react.streams_diff, [%{"op" => "remove", "path" => "/users/$$users-2"}])
+      assert_patches_equal(react.streams_diff, [
+        %{
+          "op" => "stream",
+          "path" => "/users",
+          "value" => frame([], [], ["users-2"])
+        }
+      ])
     end
 
-    test "resetting LiveStream creates replace operation" do
+    test "resetting LiveStream stays inside its canonical frame" do
       stream = LiveStream.new(:users, make_ref(), [], [])
       stream = LiveStream.reset(stream)
 
@@ -124,11 +147,11 @@ defmodule LiveViewReact.StreamsDiffTest do
         })
 
       assert_patches_equal(react.streams_diff, [
-        %{"op" => "replace", "path" => "/users", "value" => []}
+        %{"op" => "stream", "path" => "/users", "value" => frame([], [], [], true)}
       ])
     end
 
-    test "stream with limit adds limit operation" do
+    test "stream limit stays atomic with its insert metadata" do
       stream = LiveStream.new(:users, make_ref(), [], [])
 
       stream =
@@ -141,13 +164,20 @@ defmodule LiveViewReact.StreamsDiffTest do
           __changed__: %{users: LiveStream.new(:users, make_ref(), [], [])}
         })
 
-      decoded = decode_patch(react.streams_diff)
-      limit_op = Enum.find(decoded, &(&1["op"] == "limit"))
-
-      assert limit_op == %{"op" => "limit", "path" => "/users", "value" => 5}
+      assert_patches_equal(react.streams_diff, [
+        %{
+          "op" => "stream",
+          "path" => "/users",
+          "value" =>
+            frame(
+              [%{"id" => 1, "name" => "User", "age" => 1, "__dom_id" => "users-1"}],
+              [["users-1", -1, 5, false]]
+            )
+        }
+      ])
     end
 
-    test "stream insert with update_only flag creates replace operation" do
+    test "stream insert keeps update_only atomic in the frame" do
       stream = LiveStream.new(:users, make_ref(), [], [])
 
       stream =
@@ -160,12 +190,17 @@ defmodule LiveViewReact.StreamsDiffTest do
           __changed__: %{users: LiveStream.new(:users, make_ref(), [], [])}
         })
 
-      decoded = decode_patch(react.streams_diff)
-
-      replace_op =
-        Enum.find(decoded, &(&1["op"] == "replace" && String.contains?(&1["path"], "$$")))
-
-      assert replace_op["value"]["name"] == "Updated"
+      assert_patches_equal(react.streams_diff, [
+        %{
+          "op" => "stream",
+          "path" => "/users",
+          "value" =>
+            frame(
+              [%{"id" => 1, "name" => "Updated", "age" => 1, "__dom_id" => "users-1"}],
+              [["users-1", -1, nil, true]]
+            )
+        }
+      ])
     end
 
     test "LiveStream assigns do not appear in props" do

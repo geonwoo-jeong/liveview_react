@@ -26,7 +26,7 @@ Create `assets/react-components/Counter.tsx` with a default export:
 
 ```tsx
 import { useState } from "react";
-import { useLiveReact } from "liveview_react";
+import { useLiveViewReact } from "liveview_react";
 
 type CounterProps = {
   readonly count: number;
@@ -39,7 +39,7 @@ type IncrementReply =
 export default function Counter({ count }: CounterProps) {
   const [draft, setDraft] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { pushEvent } = useLiveReact();
+  const { pushEvent } = useLiveViewReact();
 
   async function increment() {
     setErrorMessage(null);

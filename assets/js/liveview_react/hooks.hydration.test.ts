@@ -13,6 +13,7 @@ import {
   reactElementProps,
   rootMock,
   setAttributes,
+  streamFrame,
   TestComponent,
 } from "./hooks.test-support";
 import { createIdentifierPrefix } from "./runtime/identifier-prefix";
@@ -81,11 +82,13 @@ describe("LiveViewReactHook", () => {
     [
       "unknown version",
       JSON.stringify({
+        version: 1,
         component: "TestComponent",
+        events: {},
         identifierPrefix: createIdentifierPrefix("malformed-root"),
         props: {},
         slots: {},
-        version: 2,
+        streams: {},
       }),
     ],
     [
@@ -95,31 +98,37 @@ describe("LiveViewReactHook", () => {
     [
       "missing identifier prefix",
       JSON.stringify({
+        version: 2,
         component: "TestComponent",
+        events: {},
         props: {},
         slots: {},
-        version: 1,
+        streams: {},
       }),
     ],
     ["identifier prefix mismatch", hydrationDescriptor("another-root")],
     [
       "non-object props",
       JSON.stringify({
+        version: 2,
         component: "TestComponent",
+        events: {},
         identifierPrefix: createIdentifierPrefix("malformed-root"),
         props: [],
         slots: {},
-        version: 1,
+        streams: {},
       }),
     ],
     [
       "invalid slots",
       JSON.stringify({
+        version: 2,
         component: "TestComponent",
+        events: {},
         identifierPrefix: createIdentifierPrefix("malformed-root"),
         props: {},
         slots: { default: 1 },
-        version: 1,
+        streams: {},
       }),
     ],
   ])("rejects a malformed hydration descriptor: %s", (_label, descriptor) => {
@@ -129,6 +138,146 @@ describe("LiveViewReactHook", () => {
     );
 
     expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow();
+  });
+
+  it("hydrates the exact dead stream frame before flushing a newer connected snapshot", () => {
+    const hook = createTestHook(
+      { id: "hydration-stream-race" },
+      {
+        "data-react-hydration": hydrationDescriptor(
+          "hydration-stream-race",
+          { phase: "dead" },
+          {},
+          "TestComponent",
+          {},
+          {
+            users: [{ __dom_id: "users-1", name: "Dead Ada" }],
+          },
+        ),
+      },
+    );
+
+    invoke(liveViewReactHook.mounted, hook);
+
+    const hydrationTree = vi.mocked(ReactDOM.hydrateRoot).mock.calls[0]?.[1];
+    const deadProps = findComponentProps(hydrationTree as ReactNode);
+    expect(deadProps).toMatchObject({
+      phase: "dead",
+      users: [{ __dom_id: "users-1", name: "Dead Ada" }],
+    });
+    expect(Object.isFrozen(deadProps?.users)).toBe(true);
+    expect(
+      Object.isFrozen(
+        (deadProps?.users as readonly unknown[] | undefined)?.[0],
+      ),
+    ).toBe(true);
+
+    setAttributes(hook, {
+      "data-props": encodeProps({ phase: "connected" }),
+      "data-props-kind": "snapshot",
+      "data-streams-diff": encodePatch([
+        [
+          "stream",
+          "/users",
+          streamFrame([{ __dom_id: "users-1", name: "Connected Ada" }], {
+            inserts: [["users-1", -1, null, true]],
+          }),
+        ],
+      ]),
+      "data-streams-kind": "snapshot",
+    });
+    invoke(liveViewReactHook.updated, hook);
+
+    expect(rootMock.render).not.toHaveBeenCalled();
+    if (!isValidElement<{ readonly onCommit?: () => void }>(hydrationTree)) {
+      throw new Error("Expected the hydration commit boundary");
+    }
+    hydrationTree.props.onCommit?.();
+
+    expect(lastRenderedProps()).toMatchObject({
+      phase: "connected",
+      users: [{ __dom_id: "users-1", name: "Connected Ada" }],
+    });
+  });
+
+  it("uses hydration streams as prior membership for the initial connected snapshot", () => {
+    const hook = createTestHook(
+      {
+        id: "hydration-initial-stream-snapshot",
+        "data-props": encodeProps({ phase: "connected" }),
+        "data-streams-diff": encodePatch([
+          [
+            "stream",
+            "/users",
+            streamFrame(
+              [
+                { __dom_id: "users-1", name: "Connected Ada" },
+                { __dom_id: "users-2", name: "Not in dead HTML" },
+              ],
+              {
+                inserts: [
+                  ["users-1", -1, null, true],
+                  ["users-2", -1, null, true],
+                ],
+              },
+            ),
+          ],
+        ]),
+        "data-streams-kind": "snapshot",
+      },
+      {
+        "data-react-hydration": hydrationDescriptor(
+          "hydration-initial-stream-snapshot",
+          { phase: "dead" },
+          {},
+          "TestComponent",
+          {},
+          { users: [{ __dom_id: "users-1", name: "Dead Ada" }] },
+        ),
+      },
+    );
+
+    invoke(liveViewReactHook.mounted, hook);
+
+    const hydrationTree = vi.mocked(ReactDOM.hydrateRoot).mock.calls[0]?.[1];
+    expect(findComponentProps(hydrationTree as ReactNode)).toMatchObject({
+      phase: "dead",
+      users: [{ __dom_id: "users-1", name: "Dead Ada" }],
+    });
+    if (!isValidElement<{ readonly onCommit?: () => void }>(hydrationTree)) {
+      throw new Error("Expected the hydration commit boundary");
+    }
+    hydrationTree.props.onCommit?.();
+
+    expect(lastRenderedProps()).toMatchObject({
+      phase: "connected",
+      users: [{ __dom_id: "users-1", name: "Connected Ada" }],
+    });
+  });
+
+  it("rejects a duplicate wrapper stream payload in hydration mode", () => {
+    const hook = createTestHook(
+      {
+        id: "duplicate-hydration-streams",
+        "data-streams-diff": encodePatch([
+          ["stream", "/users", streamFrame([])],
+        ]),
+      },
+      {
+        "data-react-hydration": hydrationDescriptor(
+          "duplicate-hydration-streams",
+          {},
+          {},
+          "TestComponent",
+          {},
+          { users: [] },
+        ),
+      },
+    );
+
+    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+      "must omit data-streams-diff payload",
+    );
   });
 
   it("preserves JSON values while passing only server props", () => {
@@ -342,7 +491,7 @@ describe("LiveViewReactHook", () => {
     });
 
     expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
-      'cannot define both prop "header" and slot "header"',
+      "as both ordinary prop and slot prop",
     );
   });
 });

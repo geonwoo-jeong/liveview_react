@@ -20,9 +20,15 @@ npm run typecheck
 npm run build:ssr
 cd ..
 
-MIX_ENV=prod mix assets.deploy
+mix assets.deploy
 MIX_ENV=prod mix release
 ```
+
+Vite's `build` command already produces the production browser bundle. The
+generated PhoenixVite production runtime configuration reads that bundle's
+manifest, so the first asset build must create the manifest before a production
+Mix runtime starts. A later `MIX_ENV=prod mix release` copies and validates the
+completed `priv` artifacts.
 
 Vite, TypeScript, and the React plugin are development dependencies needed at
 build time. Do not use `npm ci --omit=dev` in the asset build stage. They do not
@@ -37,7 +43,7 @@ and PhoenixVite aliases from the Phoenix application root:
 mix assets.setup
 mix bun assets run typecheck
 mix bun assets run build:ssr
-MIX_ENV=prod mix assets.deploy
+mix assets.deploy
 MIX_ENV=prod mix release
 ```
 

@@ -1,12 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin, ViteDevServer } from "vite";
 
-import {
-  assertNoEventPropCollisions,
-  normalizeEventCommandMap,
-} from "./runtime/event-callbacks";
-import { validateSlotBindings } from "./runtime/slots";
 import type { ServerRenderRequest } from "./server";
+import {
+  materializeComponentInputs,
+  normalizeInitialFrame,
+} from "./transport/initialFrame";
 import {
   COMPONENTS_VIRTUAL_MODULE_ID,
   generateComponentRegistry,
@@ -20,13 +19,6 @@ const DEFAULT_COMPONENT_DIRECTORY = "./react-components";
 const GENERIC_RENDER_ERROR_MESSAGE = "SSR rendering failed";
 const JSON_CONTENT_TYPE_PATTERN =
   /^application\/json(?:[ \t]*;[ \t]*charset[ \t]*=[ \t]*[!#$%&'*+\-.^_`|~0-9A-Za-z]+)?$/i;
-const SERVER_RENDER_FIELDS: readonly string[] = Object.freeze([
-  "component",
-  "events",
-  "identifierPrefix",
-  "props",
-  "slots",
-]);
 
 export interface LiveViewReactPluginOptions {
   readonly componentDirectory?: string;
@@ -214,79 +206,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseRenderRequest(value: unknown): ServerRenderRequest {
-  if (!isRecord(value)) {
-    throw new RequestError(400, "request body must be an object");
-  }
-
-  const unknownField = Object.keys(value).find(
-    (key) => !SERVER_RENDER_FIELDS.includes(key),
-  );
-  if (unknownField) {
-    throw new RequestError(
-      400,
-      `Unknown render request field "${unknownField}"`,
-    );
-  }
-
-  if (typeof value.component !== "string" || value.component.length === 0) {
-    throw new RequestError(400, "component must be a non-empty string");
-  }
-
-  if (
-    typeof value.identifierPrefix !== "string" ||
-    value.identifierPrefix.length === 0
-  ) {
-    throw new RequestError(400, "identifierPrefix must be a non-empty string");
-  }
-
-  if (value.props !== undefined && !isRecord(value.props)) {
-    throw new RequestError(400, "props must be an object");
-  }
-
-  let events: ServerRenderRequest["events"];
   try {
-    events = normalizeEventCommandMap(value.events, "render request events");
-    assertNoEventPropCollisions(
-      (value.props ?? {}) as Record<string, unknown>,
-      events,
-      "render request",
-    );
+    const frame = normalizeInitialFrame(value, "render request");
+    materializeComponentInputs(frame, "render request");
+    return frame;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     throw new RequestError(400, message);
   }
-
-  if (value.slots !== undefined) {
-    if (!isRecord(value.slots)) {
-      throw new RequestError(400, "slots must be an object");
-    }
-
-    for (const slot of Object.values(value.slots)) {
-      if (typeof slot !== "string") {
-        throw new RequestError(400, "slot values must be strings");
-      }
-    }
-  }
-
-  try {
-    validateSlotBindings(
-      (value.slots ?? {}) as Record<string, string>,
-      (value.props ?? {}) as Record<string, unknown>,
-      "render request",
-    );
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new RequestError(400, message);
-  }
-
-  const renderRequest: ServerRenderRequest = {
-    component: value.component,
-    events,
-    identifierPrefix: value.identifierPrefix,
-    ...(value.props ? { props: value.props } : {}),
-    ...(value.slots ? { slots: value.slots as Record<string, string> } : {}),
-  };
-  return renderRequest;
 }
 
 function resolveRenderer(

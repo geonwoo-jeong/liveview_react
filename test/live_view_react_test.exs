@@ -31,6 +31,22 @@ defmodule LiveViewReactTest do
     end
   end
 
+  defmodule StreamSSRRenderer do
+    @moduledoc false
+    @behaviour LiveViewReact.SSR
+
+    @impl true
+    def render(%{streams: streams} = request) do
+      send(self(), {:stream_ssr_request, request})
+
+      streams
+      |> Map.fetch!("users")
+      |> Enum.map_join(fn user ->
+        ~s(<article id="#{user["__dom_id"]}">#{user["name"]}</article>)
+      end)
+    end
+  end
+
   doctest LiveViewReact
 
   test "uses the canonical OTP application identity" do
@@ -177,7 +193,7 @@ defmodule LiveViewReactTest do
       assert Floki.attribute(wrapper, "phx-hook") == ["LiveViewReactHook"]
       assert Floki.attribute(wrapper, "phx-update") == ["ignore"]
       assert Floki.attribute(wrapper, "data-component") == ["MyComponent"]
-      assert Floki.attribute(wrapper, "data-liveview-react-version") == ["1"]
+      assert Floki.attribute(wrapper, "data-liveview-react-version") == ["2"]
       assert Floki.attribute(wrapper, "data-props-kind") == ["snapshot"]
       assert Floki.attribute(wrapper, "data-streams-kind") == ["snapshot"]
     end
@@ -196,7 +212,7 @@ defmodule LiveViewReactTest do
         |> Enum.reject(&is_nil/1)
         |> IO.iodata_to_binary()
 
-      assert dynamic =~ ~s(data-liveview-react-version="1")
+      assert dynamic =~ ~s(data-liveview-react-version="2")
     end
 
     test "renders exactly one direct React-owned target" do
@@ -217,14 +233,17 @@ defmodule LiveViewReactTest do
       assert Floki.attribute(wrapper, "data-react-hydration") == []
 
       assert Jason.decode!(descriptor) == %{
-               "version" => 1,
+               "version" => 2,
                "component" => "HydratedComponent",
                "events" => %{},
                "identifierPrefix" => "liveview-react-hydrated-component-",
                "props" => %{"greeting" => "hello"},
+               "streams" => %{},
                "slots" => %{"default" => "<em>SSR child</em>"}
              }
 
+      assert Floki.attribute(wrapper, "data-streams-kind") == ["hydration"]
+      assert Floki.attribute(wrapper, "data-streams-diff") == [""]
       assert Floki.text(target) == "server rendered"
 
       react = Test.get_react(html)
@@ -232,7 +251,7 @@ defmodule LiveViewReactTest do
       assert react.hydration == Jason.decode!(descriptor)
     end
 
-    test "excludes LiveStreams from the SSR hydration descriptor" do
+    test "includes materialized LiveStreams in the SSR hydration descriptor" do
       users = LiveStream.new(:users, make_ref(), [%{id: 1, name: "Ada"}], [])
 
       html =
@@ -243,15 +262,20 @@ defmodule LiveViewReactTest do
       react = Test.get_react(html)
 
       assert react.hydration == %{
-               "version" => 1,
+               "version" => 2,
                "component" => "HydratedStreamComponent",
                "events" => %{},
                "identifierPrefix" => "liveview-react-hydrated-stream-component-",
                "props" => %{"title" => "Users"},
+               "streams" => %{
+                 "users" => [%{"id" => 1, "name" => "Ada", "__dom_id" => "users-1"}]
+               },
                "slots" => %{}
              }
 
       refute Map.has_key?(react.hydration["props"], "users")
+      assert react.streams_kind == "hydration"
+      assert react.streams_diff == []
     end
   end
 
@@ -371,6 +395,44 @@ defmodule LiveViewReactTest do
                      end)
                    end
     end
+
+    test "passes the exact dead stream snapshot to SSR and renders no-JavaScript items" do
+      users =
+        LiveStream.new(
+          :users,
+          make_ref(),
+          [%{id: 1, name: "Ada"}, %{id: 2, name: "Grace"}],
+          dom_id: fn user -> "account/#{user.id}" end,
+          limit: 1
+        )
+
+      html =
+        with_ssr_renderer(StreamSSRRenderer, fn ->
+          render_react(&hydrated_stream_component/1, users: users)
+        end)
+
+      assert_receive {:stream_ssr_request, request}
+
+      assert Map.keys(request) |> Enum.sort() ==
+               [:component, :events, :identifierPrefix, :props, :slots, :streams, :version]
+
+      assert request.version == 2
+
+      assert request.streams == %{
+               "users" => [
+                 %{"id" => 1, "name" => "Ada", "__dom_id" => "account/1"},
+                 %{"id" => 2, "name" => "Grace", "__dom_id" => "account/2"}
+               ]
+             }
+
+      assert html =~ ~s(<article id="account/1">Ada</article>)
+      assert html =~ ~s(<article id="account/2">Grace</article>)
+
+      react = Test.get_react(html)
+      assert react.hydration["streams"] == request.streams
+      assert react.streams_kind == "hydration"
+      assert react.streams_diff == []
+    end
   end
 
   describe "slots" do
@@ -488,11 +550,60 @@ defmodule LiveViewReactTest do
       assert react.props == %{"sidebar" => []}
     end
 
+    test "uses a safe snapshot for erased default and named slot metadata" do
+      for slot_key <- [:inner_block, :sidebar] do
+        html =
+          LiveViewReact.react(%{
+            __changed__: %{slot_key => true},
+            component: "WithSlots",
+            id: "removed-#{slot_key}",
+            socket: %Socket{transport_pid: self()},
+            ssr: false,
+            title: String.duplicate("unchanged", 16)
+          })
+          |> Safe.to_iodata()
+          |> IO.iodata_to_binary()
+
+        react = Test.get_react(html)
+
+        assert react.props_kind == "snapshot"
+        assert react.props == %{"title" => String.duplicate("unchanged", 16)}
+        assert react.props_diff == []
+        assert react.slots == %{}
+      end
+    end
+
+    test "does not emit a prop removal while updating a current named slot" do
+      sidebar = [
+        %{__slot__: :sidebar, inner_block: fn _, _ -> ["Named slot revision 2"] end}
+      ]
+
+      html =
+        LiveViewReact.react(%{
+          __changed__: %{lastOperation: "initial", sidebar: true},
+          component: "WithSlots",
+          id: "updated-sidebar",
+          lastOperation: "update_slots",
+          sidebar: sidebar,
+          socket: %Socket{transport_pid: self()},
+          ssr: false,
+          title: String.duplicate("unchanged", 16)
+        })
+        |> Safe.to_iodata()
+        |> IO.iodata_to_binary()
+
+      react = Test.get_react(html)
+
+      assert react.props_kind == "patch"
+      assert react.props_diff == [["replace", "/lastOperation", "update_slots"]]
+      assert react.slots == %{"sidebar" => "Named slot revision 2"}
+    end
+
     test "rejects prop collisions with named slot props" do
       slot = [%{__slot__: :hello, inner_block: fn _, _ -> ["slot"] end}]
 
       assert_raise ArgumentError,
-                   ~s(LiveViewReact.react/1 cannot define both prop "hello" and slot "hello"),
+                   ~s(LiveViewReact.react/1 cannot merge colliding React prop "hello" from ordinary props and slot props),
                    fn ->
                      LiveViewReact.react(%{
                        "hello" => "prop",
@@ -524,7 +635,7 @@ defmodule LiveViewReactTest do
         {"forms", "<form><input></form>"},
         {"Phoenix hooks", ~s|<div phx-hook="Nested"></div>|},
         {"Phoenix-managed bindings", ~s|<div data-phx-component="1"></div>|},
-        {"nested React roots", ~s|<div data-liveview-react-version="1"></div>|}
+        {"nested React roots", ~s|<div data-liveview-react-version="2"></div>|}
       ]
 
       for {reason, slot_html} <- unsupported do
@@ -565,16 +676,18 @@ defmodule LiveViewReactTest do
         end
       end
 
-      assert_raise ArgumentError, ~r/prop "onSaveItem" and slot "onSaveItem"/, fn ->
-        LiveViewReact.react(%{
-          "r-on:save-item" => JS.push("save"),
-          onSaveItem: slot.(:onSaveItem),
-          __changed__: nil,
-          component: "WithSlots",
-          id: "event-slot-collision",
-          socket: %Socket{}
-        })
-      end
+      assert_raise ArgumentError,
+                   ~r/colliding React prop "onSaveItem".*event props and slot props/,
+                   fn ->
+                     LiveViewReact.react(%{
+                       "r-on:save-item" => JS.push("save"),
+                       onSaveItem: slot.(:onSaveItem),
+                       __changed__: nil,
+                       component: "WithSlots",
+                       id: "event-slot-collision",
+                       socket: %Socket{}
+                     })
+                   end
     end
 
     test "allows inert slot text that only mentions Phoenix binding names" do

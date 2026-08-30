@@ -4,9 +4,9 @@ LiveViewReact installs one bridge and one connection store inside every React
 root. Hooks always address the LiveView that owns that root; they do not create
 a socket or share state between roots.
 
-## `useLiveReact`
+## `useLiveViewReact`
 
-`useLiveReact()` returns the public operations of the owning LiveView hook:
+`useLiveViewReact()` returns the public operations of the owning LiveView hook:
 
 ```ts
 const {
@@ -18,12 +18,12 @@ const {
   removeHandleEvent,
   upload,
   uploadTo,
-} = useLiveReact();
+} = useLiveViewReact();
 ```
 
 `pushEvent` and `pushEventTo` use the Promise APIs in Phoenix LiveView 1.2.
-There is no callback overload. Calling `useLiveReact` outside a root created by
-LiveViewReact throws.
+There is no callback overload. Calling `useLiveViewReact` outside a component
+rendered inside a LiveViewReact root throws.
 
 ## `useLiveEvent`
 
@@ -97,8 +97,9 @@ navigate("/settings", { replace: true });
 ```
 
 The commands delegate to the public `liveSocket.js()` API. The hook may render
-during SSR or hydration; invoking a command before the live bridge exists
-throws.
+during SSR or hydration. Render-time access before the live bridge exists still
+throws, but the built-in hook uses the live client bridge for post-commit
+browser events during hydration.
 
 Prefer `Link` for anchors:
 

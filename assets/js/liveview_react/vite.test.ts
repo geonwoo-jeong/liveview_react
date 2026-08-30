@@ -89,6 +89,21 @@ function createRequest(
   }) as unknown as IncomingMessage;
 }
 
+function renderFrame(
+  overrides: Readonly<Record<string, unknown>> = {},
+): Readonly<Record<string, unknown>> {
+  return {
+    version: 2,
+    component: "Example",
+    identifierPrefix: "liveview-react-example-",
+    props: {},
+    streams: {},
+    events: {},
+    slots: {},
+    ...overrides,
+  };
+}
+
 describe("Vite virtual component registry", () => {
   it("resolves only the public virtual id and loads the default component directory", async () => {
     const root = await temporaryRoot();
@@ -276,14 +291,7 @@ describe("Vite SSR middleware", () => {
         throw new Error("Expected the SSR middleware to register");
       }
 
-      const request = createRequest(
-        {
-          component: "Example",
-          events: {},
-          identifierPrefix: "liveview-react-example-",
-        },
-        contentType,
-      );
+      const request = createRequest(renderFrame(), contentType);
       const end = vi.fn();
       const response = {
         end,
@@ -307,8 +315,9 @@ describe("Vite SSR middleware", () => {
 
   it("accepts application/json with a charset parameter", async () => {
     const use = vi.fn();
+    const render = vi.fn(() => "<main>Hello</main>");
     const ssrLoadModule = vi.fn(async () => ({
-      render: () => "<main>Hello</main>",
+      render,
     }));
     const plugin = liveViewReactPlugin();
     const configureServer = plugin.configureServer;
@@ -330,11 +339,9 @@ describe("Vite SSR middleware", () => {
     if (!middleware) throw new Error("Expected the SSR middleware to register");
 
     const request = createRequest(
-      {
-        component: "Example",
-        events: {},
-        identifierPrefix: "liveview-react-example-",
-      },
+      renderFrame({
+        streams: { users: [{ __dom_id: "users-1", name: "Ada" }] },
+      }),
       "application/json; charset=utf-8",
     );
     const end = vi.fn();
@@ -351,6 +358,12 @@ describe("Vite SSR middleware", () => {
     expect(response.statusCode).toBe(200);
     expect(end).toHaveBeenCalledWith("<main>Hello</main>");
     expect(ssrLoadModule).toHaveBeenCalledOnce();
+    expect(render).toHaveBeenCalledWith(
+      expect.objectContaining({
+        version: 2,
+        streams: { users: [{ __dom_id: "users-1", name: "Ada" }] },
+      }),
+    );
   });
 
   it("returns a generic 500 response while logging renderer details", async () => {
@@ -384,11 +397,7 @@ describe("Vite SSR middleware", () => {
       Connect.NextHandleFunction | undefined;
     if (!middleware) throw new Error("Expected the SSR middleware to register");
 
-    const request = createRequest({
-      component: "Example",
-      events: {},
-      identifierPrefix: "liveview-react-example-",
-    });
+    const request = createRequest(renderFrame());
     const end = vi.fn();
     const response = {
       end,
@@ -413,54 +422,69 @@ describe("Vite SSR middleware", () => {
     );
   });
 
-  it("returns 400 before loading the renderer for invalid slot HTML", async () => {
-    const use = vi.fn();
-    const ssrLoadModule = vi.fn();
-    const plugin = liveViewReactPlugin();
-    const configureServer = plugin.configureServer;
+  it.each([
+    [
+      "invalid slot HTML",
+      renderFrame({
+        slots: { default: "<form><button>Submit</button></form>" },
+      }),
+      'render request slot "default" contains unsupported forms',
+    ],
+    ["transport v1", renderFrame({ version: 1 }), "version must be 2"],
+    [
+      "a malformed stream item",
+      renderFrame({ streams: { users: [{ name: "missing id" }] } }),
+      "__dom_id must be a non-empty string",
+    ],
+    [
+      "a cross-namespace collision",
+      renderFrame({ props: { users: [] }, streams: { users: [] } }),
+      "as both ordinary prop and stream prop",
+    ],
+  ])(
+    "returns 400 before loading the renderer for %s",
+    async (_label, body, message) => {
+      const use = vi.fn();
+      const ssrLoadModule = vi.fn();
+      const plugin = liveViewReactPlugin();
+      const configureServer = plugin.configureServer;
 
-    if (typeof configureServer !== "function") {
-      throw new Error("Expected a configureServer hook");
-    }
+      if (typeof configureServer !== "function") {
+        throw new Error("Expected a configureServer hook");
+      }
 
-    configureServer.call(
-      {} as never,
-      {
-        middlewares: { use },
-        ssrLoadModule,
-      } as unknown as ViteDevServer,
-    );
+      configureServer.call(
+        {} as never,
+        {
+          middlewares: { use },
+          ssrLoadModule,
+        } as unknown as ViteDevServer,
+      );
 
-    const middleware = use.mock.calls[0]?.[0] as
-      Connect.NextHandleFunction | undefined;
-    if (!middleware) throw new Error("Expected the SSR middleware to register");
+      const middleware = use.mock.calls[0]?.[0] as
+        Connect.NextHandleFunction | undefined;
+      if (!middleware)
+        throw new Error("Expected the SSR middleware to register");
 
-    const request = createRequest({
-      component: "Example",
-      events: {},
-      identifierPrefix: "liveview-react-example-",
-      props: {},
-      slots: { default: "<form><button>Submit</button></form>" },
-    });
-    const end = vi.fn();
-    const response = {
-      end,
-      setHeader: vi.fn(),
-      statusCode: 0,
-    } as unknown as ServerResponse;
+      const request = createRequest(body);
+      const end = vi.fn();
+      const response = {
+        end,
+        setHeader: vi.fn(),
+        statusCode: 0,
+      } as unknown as ServerResponse;
 
-    const result = middleware(request, response, vi.fn());
-    (request as IncomingMessage & { writeBody(): void }).writeBody();
-    await result;
+      const result = middleware(request, response, vi.fn());
+      (request as IncomingMessage & { writeBody(): void }).writeBody();
+      await result;
 
-    expect(response.statusCode).toBe(400);
-    expect(JSON.parse(String(end.mock.calls[0]?.[0]))).toEqual({
-      error: {
-        message: 'render request slot "default" contains unsupported forms',
-      },
-    });
-    expect(ssrLoadModule).not.toHaveBeenCalled();
-  });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(String(end.mock.calls[0]?.[0]))).toEqual({
+        error: { message: expect.stringContaining(message) },
+      });
+      expect(ssrLoadModule).not.toHaveBeenCalled();
+    },
+  );
 
   it("serves SSR while the virtual component registry is configured", async () => {
     const root = await temporaryRoot();
@@ -497,13 +521,13 @@ describe("Vite SSR middleware", () => {
     const middleware = use.mock.calls[0]?.[0] as
       Connect.NextHandleFunction | undefined;
     if (!middleware) throw new Error("Expected the SSR middleware to register");
-    const request = createRequest({
-      component: "Greeting",
-      events: {},
-      identifierPrefix: "liveview-react-greeting-",
-      props: { name: "World" },
-      slots: {},
-    });
+    const request = createRequest(
+      renderFrame({
+        component: "Greeting",
+        identifierPrefix: "liveview-react-greeting-",
+        props: { name: "World" },
+      }),
+    );
     const end = vi.fn();
     const response = {
       end,

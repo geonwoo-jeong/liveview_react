@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
+import type { PatchOperation } from "./compactPatch";
 import { applyPatch } from "./jsonPatch";
 
 type JsonScalar = null | boolean | number | string;
@@ -53,6 +54,22 @@ const arrayReplacementArbitrary = fc.record({
       replacement: jsonScalarArbitrary,
     }),
     { minLength: 1, maxLength: 10 },
+  ),
+});
+
+const arrayEditArbitrary = fc.record({
+  initial: fc.array(jsonScalarArbitrary, { maxLength: 12 }),
+  commands: fc.array(
+    fc.record({
+      kind: fc.constantFrom<"add" | "remove" | "replace">(
+        "add",
+        "remove",
+        "replace",
+      ),
+      selector: fc.nat({ max: 10_000 }),
+      value: jsonScalarArbitrary,
+    }),
+    { minLength: 1, maxLength: 20 },
   ),
 });
 
@@ -138,7 +155,82 @@ describe("JSON patch properties", () => {
       { seed: 1_384_760_542, numRuns: 180, endOnFailure: true },
     );
   });
+
+  it("matches an immutable reference model for bounded array edits", () => {
+    fc.assert(
+      fc.property(arrayEditArbitrary, ({ initial, commands }) => {
+        const original = { items: initial, stable: { marker: "stable" } };
+        const snapshot = cloneJson(original);
+        const { expected, patch } = commands.reduce(
+          (state, command) => applyReferenceCommand(state, command),
+          {
+            expected: initial as readonly JsonScalar[],
+            patch: [] as readonly PatchOperation[],
+          },
+        );
+
+        const result = applyPatch(original, patch);
+
+        expect(result.items).toEqual(expected);
+        expect(result.stable).toBe(original.stable);
+        expect(original).toEqual(snapshot);
+      }),
+      { seed: 1_431_529_045, numRuns: 180, endOnFailure: true },
+    );
+  });
 });
+
+interface ArrayEditCommand {
+  readonly kind: "add" | "remove" | "replace";
+  readonly selector: number;
+  readonly value: JsonScalar;
+}
+
+interface ArrayEditState {
+  readonly expected: readonly JsonScalar[];
+  readonly patch: readonly PatchOperation[];
+}
+
+function applyReferenceCommand(
+  state: ArrayEditState,
+  command: ArrayEditCommand,
+): ArrayEditState {
+  if (command.kind === "add" || state.expected.length === 0) {
+    const index = command.selector % (state.expected.length + 1);
+    return {
+      expected: [
+        ...state.expected.slice(0, index),
+        command.value,
+        ...state.expected.slice(index),
+      ],
+      patch: [
+        ...state.patch,
+        { op: "add", path: `/items/${index}`, value: command.value },
+      ],
+    };
+  }
+
+  const index = command.selector % state.expected.length;
+  if (command.kind === "remove") {
+    return {
+      expected: [
+        ...state.expected.slice(0, index),
+        ...state.expected.slice(index + 1),
+      ],
+      patch: [...state.patch, { op: "remove", path: `/items/${index}` }],
+    };
+  }
+
+  return {
+    expected: state.expected.map((value, valueIndex) =>
+      valueIndex === index ? command.value : value,
+    ),
+    patch: [
+      ...state.patch,
+      { op: "replace", path: `/items/${index}`, value: command.value },
+    ],
+  };
+}
 
 function buildNestedDocument(
   segments: readonly string[],

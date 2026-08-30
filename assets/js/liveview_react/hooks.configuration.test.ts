@@ -104,6 +104,74 @@ describe("LiveViewReactHook", () => {
     expect(rootMock.unmount).not.toHaveBeenCalled();
   });
 
+  it("tears down an active runtime before reporting a lazy load failure", async () => {
+    let rejectComponent!: (reason: unknown) => void;
+    const componentPromise = new Promise<{ default: typeof TestComponent }>(
+      (_resolve, reject) => {
+        rejectComponent = reject;
+      },
+    );
+    const queuedErrors: VoidFunction[] = [];
+    const removeEventListener = vi.spyOn(window, "removeEventListener");
+    vi.spyOn(globalThis, "queueMicrotask").mockImplementation((callback) => {
+      queuedErrors.push(callback);
+    });
+    const lazyRuntime = createLiveViewReact({
+      components: {
+        LazyComponent: { load: () => componentPromise },
+      },
+    });
+    const mockHook = createMockLiveViewHook({
+      "data-component": "LazyComponent",
+    });
+    const element = document.createElement("section");
+    for (const [name, value] of Object.entries({
+      "data-component": "LazyComponent",
+      "data-events": "{}",
+      "data-liveview-react-version": "2",
+      "data-props": "{}",
+      "data-props-kind": "snapshot",
+      "data-slots": "{}",
+      "data-streams-kind": "snapshot",
+      id: "lazy-load-failure",
+    })) {
+      element.setAttribute(name, value);
+    }
+    element.append(mockHook.target);
+    document.body.append(element);
+    const hook = { ...mockHook, el: element };
+
+    invoke(lazyRuntime.hooks.LiveViewReactHook.mounted, hook);
+    rejectComponent(new Error("load failed"));
+    await componentPromise.catch(() => undefined);
+    await Promise.resolve();
+
+    hook.el.setAttribute("data-component", "AnotherComponent");
+    expect(() =>
+      invoke(lazyRuntime.hooks.LiveViewReactHook.updated, hook),
+    ).not.toThrow();
+    expect(vi.mocked(ReactDOM.createRoot)).not.toHaveBeenCalled();
+    expect(queuedErrors).toHaveLength(1);
+    expect(() => queuedErrors[0]?.()).toThrow(
+      'Unable to load component "LazyComponent"',
+    );
+    for (const eventName of [
+      "phx:before-navigate",
+      "phx:page-loading-start",
+      "phx:page-loading-stop",
+    ]) {
+      expect(
+        removeEventListener.mock.calls.filter(
+          ([removedName]) => removedName === eventName,
+        ),
+      ).toHaveLength(1);
+    }
+
+    invoke(lazyRuntime.hooks.LiveViewReactHook.destroyed, hook);
+    element.remove();
+    vi.restoreAllMocks();
+  });
+
   it("cancels a pending lazy mount after an identity violation", async () => {
     let resolveComponent!: (module: { default: typeof TestComponent }) => void;
     const componentPromise = new Promise<{ default: typeof TestComponent }>(

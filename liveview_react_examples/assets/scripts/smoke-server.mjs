@@ -8,11 +8,19 @@ const html = await render({
   component: "Simple",
   events: {},
   identifierPrefix: "liveview-react-smoke-simple-",
+  props: {},
+  slots: {},
+  streams: {},
+  version: 2,
 });
 const lazyHtml = await render({
   component: "Lazy",
   events: {},
   identifierPrefix: "liveview-react-smoke-lazy-",
+  props: {},
+  slots: {},
+  streams: {},
+  version: 2,
 });
 
 if (!html.includes("Hello world!")) {

@@ -28,7 +28,7 @@ import {
   type LiveNavigation,
   type LiveNavigationOptions,
 } from "./hooks/useLiveNavigation";
-import { useLiveReact } from "./hooks/useLiveReact";
+import { useLiveViewReact } from "./hooks/useLiveViewReact";
 import "./react-phx";
 import { normalizeRegistry } from "./registry";
 import type { ConnectionSnapshot } from "./runtime/connection";
@@ -81,6 +81,8 @@ export type {
   PushEventTo,
   RemoveHandleEvent,
   SlotMap,
+  StreamItem,
+  StreamMap,
   TargetedEventReply,
   Upload,
   UploadFiles,
@@ -97,7 +99,7 @@ export {
   useLiveForm,
   useLiveNavigation,
   useLiveUpload,
-  useLiveReact,
+  useLiveViewReact,
 };
 export type {
   LiveNavigation,

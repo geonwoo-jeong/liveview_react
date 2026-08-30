@@ -6,7 +6,7 @@ callback props, and normal `phx-*` bindings rendered by React.
 ## Programmatic events
 
 ```tsx
-const { pushEvent } = useLiveReact();
+const { pushEvent } = useLiveViewReact();
 const reply = await pushEvent<{ count: number }>("increment", { by: 1 });
 ```
 

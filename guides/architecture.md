@@ -7,13 +7,13 @@ runtime.
 
 ## Ownership boundary
 
-| Surface | Owner |
-| --- | --- |
-| LiveView process, assigns, events, navigation, reconnect | Phoenix LiveView |
-| Outer hook element and transport attributes | LiveViewReact on the LiveView side |
-| Inner mount target and component descendants | React |
-| Persisted and shared application state | The application through LiveView |
-| Drafts, focus, animation, widget state | The mounted React root |
+| Surface                                                  | Owner                              |
+| -------------------------------------------------------- | ---------------------------------- |
+| LiveView process, assigns, events, navigation, reconnect | Phoenix LiveView                   |
+| Outer hook element and transport attributes              | LiveViewReact on the LiveView side |
+| Inner mount target and component descendants             | React                              |
+| Persisted and shared application state                   | The application through LiveView   |
+| Drafts, focus, animation, widget state                   | The mounted React root             |
 
 The rendered boundary has one transport-only outer element and one direct
 React target:
@@ -49,12 +49,19 @@ instances.
 
 ## Transport and reconciliation
 
-The initial disconnected render carries an immutable full snapshot. Connected
-updates carry either a full snapshot or compact patch, whichever is smaller.
-Patch application is copy-on-write: unchanged subtrees keep their JavaScript
-references so `React.memo` can avoid unrelated renders. LiveStream values use a
-separate ordered patch lane and keep Phoenix's computed `__dom_id` for React
-keys. Events and slots have dedicated validated transports.
+Transport v2 uses one mandatory initial frame with exactly `version`,
+`component`, `identifierPrefix`, `props`, `streams`, `events`, and `slots`.
+The server renderer and hydration parser validate and materialize that same
+frame; none of its data fields are inferred when missing. Connected ordinary
+props carry either a full snapshot or compact patch, whichever is smaller.
+LiveStream values use a separate prior-aware snapshot/patch lane because
+Phoenix's `update_only`, reset, insertion, and limit behavior depends on browser
+membership. One atomic frame carries materialized items plus raw insert,
+delete, and reset metadata; the generic JSON Patch lane has no stream-specific
+operations. Application is copy-on-write: unchanged subtrees keep their
+JavaScript references so `React.memo` can avoid unrelated renders. Stream items
+retain Phoenix's computed `__dom_id` for React keys. Events and slots have
+dedicated validated transports.
 
 The protocol is versioned. A malformed recoverable patch requests one full
 LiveView reconnect snapshot; an unsupported version or repeated failure tears
@@ -76,25 +83,39 @@ The hook lifecycle maps directly to React runtime behavior:
   and slots.
 - `disconnected` and `reconnected` update the per-root connection store.
 - `destroyed` makes callbacks inert and unmounts the root exactly once.
+  During a full LiveView navigation only, the runtime then retains a bounded
+  static DOM snapshot until Phoenix replaces the outgoing main view. React
+  effects, subscriptions, and pending lazy commits are already gone; ordinary
+  conditional removal never waits for a navigation event.
 
 ## SSR and hydration
 
 Disconnected SSR and browser hydration use the same component registry,
-provider tree, props, slots, event metadata, and ID-derived
-`identifierPrefix`. The immutable hydration descriptor records the exact
-server snapshot. If the connected join brings newer props while hydration is
-in progress, the runtime waits for the hydration commit and then renders the
-latest snapshot.
+provider tree, ordinary props, stream props, slots, event metadata, and
+ID-derived `identifierPrefix`. The immutable v2 hydration descriptor records
+the exact dead-render frame. If the connected join brings a newer snapshot
+while hydration is in progress, the runtime hydrates that dead frame first,
+waits for the hydration commit, and only then renders the newest connected
+state.
 
 Development SSR is an HTTP request to the Vite plugin. Production SSR invokes
 the built ESM renderer through `NodeJS`. An available renderer failure is an
 error, not an implicit client-only fallback; absent SSR infrastructure uses the
 documented client-only path. See [SSR](ssr.md).
 
+The architecture intentionally keeps SSR buffered: the JavaScript renderer
+returns one string and the BEAM adapter embeds that complete result in the
+disconnected HEEx response. React streaming is deferred until a separate
+Phoenix initial-response integration can own chunk delivery, backpressure,
+abort propagation, phased errors, and hydration ordering end to end. It must
+not overload the existing `render/1 -> binary()` boundary. The evidence and
+migration boundary are recorded in
+[Streaming SSR decision](ssr.md#streaming-ssr-decision).
+
 ## Deliberate non-goals
 
 LiveViewReact does not provide cross-root Context, client-side routing, a
-client data-fetching framework, streaming SSR, a generic framework adapter, or
-interactive Phoenix subtrees inside transported slots. See
-[Limitations](limitations.md) and [Comparison](comparison.md) when choosing an
-application architecture.
+client data-fetching framework, streaming SSR in the current response model, a
+generic framework adapter, or interactive Phoenix subtrees inside transported
+slots. See [Limitations](limitations.md) and [Comparison](comparison.md) when
+choosing an application architecture.

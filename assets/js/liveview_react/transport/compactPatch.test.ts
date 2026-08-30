@@ -30,18 +30,26 @@ describe("decodeCompactPatch", () => {
     ]);
   });
 
-  it("decodes null, booleans, numbers, upsert, and limit", () => {
+  it("decodes null, booleans, numbers, and an opaque stream frame", () => {
     expect(
       decodeCompactPatch(
-        "r6:/titlezu6:/itemsJ8:{^id^:1}l6:/itemsn2:-3r5:/flagb0r6:/pricen4:22.5",
+        "r6:/titlezs6:/itemsJ8:{^id^:1}r5:/flagb0r6:/pricen4:22.5",
       ),
     ).toEqual([
       { op: "replace", path: "/title", value: null },
-      { op: "upsert", path: "/items", value: { id: 1 } },
-      { op: "limit", path: "/items", value: -3 },
+      { op: "stream", path: "/items", value: { id: 1 } },
       { op: "replace", path: "/flag", value: false },
       { op: "replace", path: "/price", value: 22.5 },
     ]);
+  });
+
+  it.each([
+    ["removed upsert code", "u0:z"],
+    ["removed limit code", "l0:n1:1"],
+  ])("rejects the %s", (_label, payload) => {
+    expect(() => decodeCompactPatch(payload)).toThrow(
+      "Unknown LiveViewReact patch operation code",
+    );
   });
 
   it("returns a frozen empty array for a null or empty payload", () => {

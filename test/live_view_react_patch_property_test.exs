@@ -53,18 +53,45 @@ defmodule LiveViewReact.PatchPropertyTest do
 
   defp operation_generator do
     one_of([
-      bind(member_of(["add", "replace", "upsert"]), fn op ->
+      bind(member_of(["add", "replace"]), fn op ->
         bind(path_generator(), fn path ->
           map(json_value_generator(), fn value -> %{op: op, path: path, value: value} end)
         end)
       end),
       map(path_generator(), fn path -> %{op: "remove", path: path} end),
-      bind(path_generator(), fn path ->
-        map(integer(-1_000_000..1_000_000), fn value ->
-          %{op: "limit", path: path, value: value}
-        end)
-      end)
+      stream_operation_generator()
     ])
+  end
+
+  defp stream_operation_generator do
+    {transport_string_generator(), list_of(json_scalar_generator(), max_length: 6)}
+    |> tuple()
+    |> map(fn {name, values} -> stream_operation(name, values) end)
+  end
+
+  defp stream_operation(name, values) do
+    items =
+      values
+      |> Enum.with_index()
+      |> Enum.map(fn {value, index} ->
+        %{"__dom_id" => "item-#{index}", "value" => value}
+      end)
+
+    inserts =
+      items
+      |> Enum.reverse()
+      |> Enum.map(fn item -> [item["__dom_id"], -1, nil, false] end)
+
+    %{
+      op: "stream",
+      path: "/" <> escape_pointer_segment(name),
+      value: %{
+        "items" => items,
+        "inserts" => inserts,
+        "deletes" => [],
+        "reset" => false
+      }
+    }
   end
 
   defp path_generator do

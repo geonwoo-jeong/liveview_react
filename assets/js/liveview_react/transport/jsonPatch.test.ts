@@ -71,148 +71,60 @@ describe("applyPatch", () => {
     expect(second.name).toBe("second");
   });
 
-  it("supports stream upsert, removal, and limits", () => {
-    const first = { __dom_id: "a", value: 1 };
-    const original = { rows: [first] };
+  it("uses RFC array add, replace, remove, and append semantics", () => {
+    const original = { items: ["a", "c"] };
 
     const result = applyPatch(original, [
-      { op: "upsert", path: "/rows/-", value: { __dom_id: "b", value: 2 } },
-      { op: "upsert", path: "/rows/-", value: { __dom_id: "a", value: 3 } },
-      { op: "limit", path: "/rows", value: -1 },
+      { op: "add", path: "/items/1", value: "b" },
+      { op: "add", path: "/items/-", value: "d" },
+      { op: "replace", path: "/items/2", value: "C" },
+      { op: "remove", path: "/items/0" },
     ]);
 
-    expect(result.rows).toEqual([{ __dom_id: "b", value: 2 }]);
-    expect(original.rows).toEqual([first]);
+    expect(result.items).toEqual(["b", "C", "d"]);
+    expect(original.items).toEqual(["a", "c"]);
   });
 
-  it("appends stream upserts whose numeric index is beyond the end", () => {
-    const original = { rows: [{ __dom_id: "a", value: 1 }] };
+  it("clones a caller-owned added value before a later nested update", () => {
+    const inserted = { value: "before" };
 
-    const result = applyPatch(original, [
-      {
-        op: "upsert",
-        path: "/rows/99",
-        value: { __dom_id: "b", value: 2 },
-      },
-      {
-        op: "upsert",
-        path: "/rows/999",
-        value: { __dom_id: "c", value: 3 },
-      },
+    const result = applyPatch({ items: [] as Array<{ value: string }> }, [
+      { op: "add", path: "/items/-", value: inserted },
+      { op: "replace", path: "/items/0/value", value: "after" },
     ]);
 
-    expect(result.rows.map((row) => row.__dom_id)).toEqual(["a", "b", "c"]);
-    expect(original.rows.map((row) => row.__dom_id)).toEqual(["a"]);
+    expect(result.items).toEqual([{ value: "after" }]);
+    expect(result.items[0]).not.toBe(inserted);
+    expect(inserted).toEqual({ value: "before" });
   });
 
-  it("preserves Phoenix ordering for consecutive inserts at index zero", () => {
-    const original: { rows: Array<{ __dom_id: string }> } = { rows: [] };
-    const result = applyPatch(original, [
-      { op: "upsert", path: "/rows/0", value: { __dom_id: "a" } },
-      { op: "upsert", path: "/rows/0", value: { __dom_id: "b" } },
-      { op: "upsert", path: "/rows/0", value: { __dom_id: "c" } },
-    ]);
+  it("requires replace and remove targets to exist", () => {
+    const original = { items: ["a"] };
 
-    expect(result.rows.map((row) => row.__dom_id)).toEqual(["c", "b", "a"]);
+    expect(() =>
+      applyPatch(original, [{ op: "replace", path: "/missing", value: true }]),
+    ).toThrow("does not resolve to a value");
+    expect(() =>
+      applyPatch(original, [{ op: "remove", path: "/items/1" }]),
+    ).toThrow("out of bounds");
+    expect(original).toEqual({ items: ["a"] });
   });
 
-  it("updates an existing DOM id in place regardless of the requested path", () => {
-    const first = { __dom_id: "a", value: 1 };
-    const second = { __dom_id: "b", value: 2 };
-    const third = { __dom_id: "c", value: 3 };
-    const original = { rows: [first, second, third] };
-
-    const result = applyPatch(original, [
-      {
-        op: "upsert",
-        path: "/rows/999",
-        value: { __dom_id: "b", value: 20 },
-      },
-    ]);
-
-    expect(result.rows.map((row) => row.__dom_id)).toEqual(["a", "b", "c"]);
-    expect(result.rows[1]).toEqual({ __dom_id: "b", value: 20 });
-    expect(result.rows[0]).toBe(first);
-    expect(result.rows[2]).toBe(third);
-    expect(original.rows[1]).toBe(second);
-  });
-
-  it("applies positive and negative stream limits", () => {
-    const rows = [
-      { __dom_id: "a" },
-      { __dom_id: "b" },
-      { __dom_id: "c" },
-      { __dom_id: "d" },
-    ];
-
-    const positive = applyPatch({ rows }, [
-      { op: "limit", path: "/rows", value: 2 },
-    ]);
-    const negative = applyPatch({ rows }, [
-      { op: "limit", path: "/rows", value: -2 },
-    ]);
-
-    expect(positive.rows.map((row) => row.__dom_id)).toEqual(["a", "b"]);
-    expect(negative.rows.map((row) => row.__dom_id)).toEqual(["c", "d"]);
-    expect(rows.map((row) => row.__dom_id)).toEqual(["a", "b", "c", "d"]);
-  });
-
-  it("preserves untouched sibling stream and item references", () => {
-    const changed = { __dom_id: "u1", name: "before" };
-    const untouched = { __dom_id: "u2", name: "stable" };
-    const notification = { __dom_id: "n1", message: "stable" };
-    const notifications = [notification];
-    const original = { users: [changed, untouched], notifications };
-
-    const result = applyPatch(original, [
-      {
-        op: "upsert",
-        path: "/users/0",
-        value: { __dom_id: "u1", name: "after" },
-      },
-    ]);
-
-    expect(result.users).not.toBe(original.users);
-    expect(result.users[0]).not.toBe(changed);
-    expect(result.users[1]).toBe(untouched);
-    expect(result.notifications).toBe(notifications);
-    expect(result.notifications[0]).toBe(notification);
-    expect(original.users[0]).toBe(changed);
-  });
-
-  it.each([1.5, Number.MAX_SAFE_INTEGER + 1])(
-    "rejects an invalid stream limit: %s",
-    (value) => {
-      expect(() =>
-        applyPatch({ rows: [1, 2] }, [{ op: "limit", path: "/rows", value }]),
-      ).toThrow("requires a safe integer");
-    },
-  );
-
-  it("treats missing stream delete and update_only targets as idempotent", () => {
-    const original = { rows: [{ __dom_id: "a", value: 1 }] };
+  it("supports document-root add, replace, and remove", () => {
+    const added = { state: "added" };
+    const replaced = { state: "replaced" };
 
     expect(
-      applyPatch(original, [{ op: "remove", path: "/rows/$$missing" }]),
-    ).toBe(original);
+      applyPatch({ state: "old" }, [{ op: "add", path: "", value: added }]),
+    ).toBe(added);
     expect(
-      applyPatch(original, [
-        {
-          op: "replace",
-          path: "/rows/$$missing",
-          value: { __dom_id: "missing", value: 2 },
-        },
+      applyPatch({ state: "old" }, [
+        { op: "replace", path: "", value: replaced },
       ]),
-    ).toBe(original);
-  });
-
-  it("supports document-root replacement", () => {
-    const replacement = { ready: true };
+    ).toBe(replaced);
     expect(
-      applyPatch({ ready: false }, [
-        { op: "replace", path: "", value: replacement },
-      ]),
-    ).toBe(replacement);
+      applyPatch({ state: "old" }, [{ op: "remove", path: "" }]),
+    ).toBeNull();
   });
 
   it("handles escaped JSON Pointer property names", () => {
@@ -224,23 +136,33 @@ describe("applyPatch", () => {
     expect(result["a/b~c"]).toEqual({ value: "new" });
   });
 
-  it("handles prototype-named properties without prototype pollution", () => {
-    const original = { safe: true };
-    const result = applyPatch(original, [
-      { op: "add", path: "/__proto__", value: { local: true } },
-      { op: "add", path: "/constructor", value: "local" },
-    ]);
-    const resultRecord = result as Record<string, unknown>;
+  it("rejects stream frames with a dedicated routing error", () => {
+    expect(() =>
+      applyPatch({}, [{ op: "stream", path: "/rows", value: { items: [] } }]),
+    ).toThrow("Stream frames must be applied through the stream transport");
+  });
 
-    expect(Object.hasOwn(result, "__proto__")).toBe(true);
-    expect(resultRecord.__proto__).toEqual({ local: true });
-    expect(resultRecord.constructor).toBe("local");
+  it("rejects prototype-sensitive paths without prototype pollution", () => {
+    const original = { safe: true };
+
+    expect(() =>
+      applyPatch(original, [
+        { op: "add", path: "/__proto__", value: { local: true } },
+      ]),
+    ).toThrow("prototype-sensitive segment");
+    expect(() =>
+      applyPatch(original, [
+        { op: "add", path: "/constructor", value: "local" },
+      ]),
+    ).toThrow("prototype-sensitive segment");
+    expect(original).toEqual({ safe: true });
     expect(({} as Record<string, unknown>).local).toBeUndefined();
   });
 
   it.each([
     ["invalid pointer escape", "/items/~2", "replace"],
     ["non-canonical array index", "/items/01", "replace"],
+    ["DOM-id selector", "/items/$$row", "replace"],
     ["out-of-range replace", "/items/2", "replace"],
     ["out-of-range add", "/items/2", "add"],
     ["out-of-range remove", "/items/2", "remove"],
@@ -257,8 +179,130 @@ describe("applyPatch", () => {
       applyPatch({}, [
         { op: "add", path: "/constructor/prototype/polluted", value: true },
       ]),
-    ).toThrow("does not resolve to a value");
+    ).toThrow("prototype-sensitive segment");
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it.each([
+    [{ op: "copy", path: "/safe", value: true }, "unsupported op"],
+    [{ op: "upsert", path: "/safe", value: true }, "unsupported op"],
+    [{ op: "limit", path: "/safe", value: 1 }, "unsupported op"],
+    [{ op: "add", path: "/safe" }, "requires a value"],
+    [{ op: "remove", path: "/safe", value: true }, "must not contain a value"],
+    [{ op: "add", path: "/safe", value: true, legacy: true }, "unknown field"],
+  ])("rejects malformed operations: %o", (operation, message) => {
+    expect(() => applyPatch({}, [operation] as never)).toThrow(message);
+  });
+
+  it("rejects symbol and accessor fields without invoking accessors", () => {
+    let accessorRead = false;
+    const accessorOperation = {
+      path: "/safe",
+      value: true,
+    } as Record<string, unknown>;
+    Object.defineProperty(accessorOperation, "op", {
+      enumerable: true,
+      get() {
+        accessorRead = true;
+        return "add";
+      },
+    });
+
+    expect(() => applyPatch({}, [accessorOperation] as never)).toThrow(
+      "enumerable data properties",
+    );
+    expect(accessorRead).toBe(false);
+
+    const symbolOperation = {
+      op: "add",
+      path: "/safe",
+      value: true,
+      [Symbol("legacy")]: true,
+    };
+    expect(() => applyPatch({}, [symbolOperation] as never)).toThrow(
+      "keys must be strings",
+    );
+  });
+
+  it("rejects sparse, extended, and accessor patch arrays", () => {
+    const sparse = new Array(1);
+    expect(() => applyPatch({}, sparse as never)).toThrow(
+      "dense and unextended",
+    );
+
+    const extended = [{ op: "add", path: "/safe", value: true }];
+    Object.defineProperty(extended, "legacy", { value: true });
+    expect(() => applyPatch({}, extended as never)).toThrow(
+      "dense and unextended",
+    );
+
+    let accessorRead = false;
+    const accessor = new Array(1);
+    Object.defineProperty(accessor, "0", {
+      enumerable: true,
+      get() {
+        accessorRead = true;
+        return { op: "add", path: "/safe", value: true };
+      },
+    });
+    expect(() => applyPatch({}, accessor as never)).toThrow("data elements");
+    expect(accessorRead).toBe(false);
+  });
+
+  it("rejects non-data document properties without invoking accessors", () => {
+    let accessorRead = false;
+    const original = { safe: true } as Record<string, unknown>;
+    Object.defineProperty(original, "computed", {
+      enumerable: true,
+      get() {
+        accessorRead = true;
+        return "unsafe";
+      },
+    });
+
+    expect(() =>
+      applyPatch(original, [{ op: "add", path: "/added", value: true }]),
+    ).toThrow("enumerable data properties");
+    expect(accessorRead).toBe(false);
+
+    const symbolDocument = { safe: true, [Symbol("hidden")]: true };
+    expect(() =>
+      applyPatch(symbolDocument, [{ op: "add", path: "/added", value: true }]),
+    ).toThrow("symbol key");
+  });
+
+  it("rejects sparse, extended, and accessor document arrays", () => {
+    const sparse = new Array(2);
+    sparse[0] = "a";
+    expect(() =>
+      applyPatch({ items: sparse }, [
+        { op: "add", path: "/items/-", value: "b" },
+      ]),
+    ).toThrow("dense and unextended");
+
+    const extended = ["a"] as unknown[] & { legacy?: boolean };
+    extended.legacy = true;
+    expect(() =>
+      applyPatch({ items: extended }, [
+        { op: "add", path: "/items/-", value: "b" },
+      ]),
+    ).toThrow("dense and unextended");
+
+    let accessorRead = false;
+    const accessor = ["a"];
+    Object.defineProperty(accessor, "0", {
+      enumerable: true,
+      get() {
+        accessorRead = true;
+        return "a";
+      },
+    });
+    expect(() =>
+      applyPatch({ items: accessor }, [
+        { op: "add", path: "/items/-", value: "b" },
+      ]),
+    ).toThrow("data elements");
+    expect(accessorRead).toBe(false);
   });
 
   it("preserves references across a large nested update", () => {

@@ -16,6 +16,7 @@ let audit = Object.freeze({
   hydrationMounts: Object.freeze([]),
   transport: Object.freeze({ corruptions: 0 }),
   hookCallbacks: Object.freeze([]),
+  destroyedCallbacks: Object.freeze([]),
   rootErrors: Object.freeze([]),
 });
 
@@ -116,6 +117,25 @@ function recordHookCallback(lifecycle, element) {
   });
 }
 
+function recordDestroyedCallback(element) {
+  const main = element.closest("[data-phx-main]");
+  const entry = Object.freeze({
+    elementConnected: element.isConnected,
+    elementId: element.id,
+    mainConnected: main instanceof HTMLElement ? main.isConnected : null,
+    mainLoading:
+      main instanceof HTMLElement
+        ? main.classList.contains("phx-loading")
+        : null,
+    mainPresent: main instanceof HTMLElement,
+  });
+
+  audit = Object.freeze({
+    ...audit,
+    destroyedCallbacks: Object.freeze([...audit.destroyedCallbacks, entry]),
+  });
+}
+
 function recordHydrationMount(element) {
   const target = element.querySelector(":scope > [data-react-target]");
   const input = target?.querySelector("input");
@@ -182,6 +202,10 @@ export function auditLiveViewReactHook(hook) {
     updated: wrapHookCallback(hook, "updated"),
     disconnected: wrapHookCallback(hook, "disconnected"),
     reconnected: wrapHookCallback(hook, "reconnected"),
+    destroyed(...args) {
+      recordDestroyedCallback(this.el);
+      return hook.destroyed.apply(this, args);
+    },
   });
 }
 

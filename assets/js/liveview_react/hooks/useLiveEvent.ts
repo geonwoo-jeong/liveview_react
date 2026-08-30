@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
-import { useLiveReact } from "./useLiveReact";
+import { useRequiredClientBridge } from "../runtime/client-bridge-context";
 
 function assertEventName(event: string): void {
   if (event.length === 0) {
@@ -14,7 +14,8 @@ export function useLiveEvent<TPayload>(
 ): void {
   assertEventName(event);
 
-  const { handleEvent, removeHandleEvent } = useLiveReact();
+  const { handleEvent, removeHandleEvent } =
+    useRequiredClientBridge("useLiveEvent");
   const handlerRef = useRef(handler);
 
   useLayoutEffect(() => {

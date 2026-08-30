@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 
-import { useOptionalLiveReact } from "../context";
+import { useOptionalClientBridge } from "../runtime/client-bridge-context";
 import { readLiveSocketCommands } from "../runtime/live-socket";
 
 export interface LiveNavigationOptions {
@@ -28,7 +28,7 @@ function requireNavigationCommands(liveSocket: unknown) {
 }
 
 export function useLiveNavigation(): LiveNavigation {
-  const bridge = useOptionalLiveReact();
+  const bridge = useOptionalClientBridge();
   const liveSocketRef = useRef(bridge?.liveSocket ?? null);
 
   useLayoutEffect(() => {
