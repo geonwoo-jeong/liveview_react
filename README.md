@@ -1,11 +1,56 @@
-# liveview_react
+<p align="center">
+  <img
+    src="guides/images/liveview_react_logo.png"
+    alt="liveview_react logo icon: a phoenix combined with React-style atomic orbits"
+    width="220"
+  />
+</p>
 
-`liveview_react` is a clean-break React bridge for Phoenix LiveView.
+<h1 align="center">liveview_react</h1>
 
-It mounts normal React 19 roots inside LiveView without adding a second socket,
-without turning the page into a SPA, and without hiding ownership boundaries.
-LiveView stays in charge of routing, server state, validation, reconnects, and
-DOM replacement. React owns only the subtree you mount.
+<p align="center">
+  <strong>React 19 inside Phoenix LiveView, with LiveView still in charge.</strong>
+</p>
+
+<p align="center">
+  <a href="https://hexdocs.pm/liveview_react">HexDocs</a> ·
+  <a href="https://hex.pm/packages/liveview_react">Hex</a> ·
+  <a href="https://www.npmjs.com/package/liveview_react">npm</a> ·
+  <a href="guides/getting_started.md">Getting started</a> ·
+  <a href="guides/comparison.md">Comparison</a> ·
+  <a href="guides/limitations.md">Limitations</a>
+</p>
+
+`liveview_react` mounts normal React roots inside Phoenix LiveView. LiveView
+continues to own routing, authoritative server state, validation, reconnects,
+and DOM replacement. React owns only the component tree you explicitly mount.
+There is no second socket, hidden page-wide root, or SPA runtime.
+
+If you are evaluating fit, read [Why](#why), [Runtime model](#runtime-model),
+and [Boundaries](#boundaries) first.
+
+## Features
+
+- **Real React 19 roots** — one explicit, independently managed root per
+  `<.react>` call
+- **End-to-end LiveView reactivity** — server assigns update React props through
+  immutable snapshots and copy-on-write patches without moving authoritative
+  state into the browser
+- **SSR and hydration** — the same component registry powers development SSR,
+  production Node.js SSR, no-JavaScript HTML, and browser hydration
+- **Efficient transport** — compact prop diffs and Phoenix Streams operations
+  update existing roots while preserving local React state
+- **LiveView interoperability** — events, Promise replies, navigation,
+  connection state, forms, uploads, and direct `phx-*` attributes
+- **Inert HTML slots** — the HEEx element body arrives as React `children`, and
+  `<:slot name="...">` entries arrive as same-name props within the documented
+  [non-interactive boundary](guides/slots.md)
+- **Lifecycle safety** — conditional removal, slow live navigation, reconnects,
+  lazy imports, and repeated destruction finalize exactly once
+- **Type-safe Vite integration** — strict TypeScript, a virtual component
+  registry, React Refresh, and matching browser and server entrypoints
+- **One-command setup** — the Igniter installer configures PhoenixVite, React,
+  TypeScript, SSR, and an optional working example
 
 ## Why
 
@@ -13,23 +58,12 @@ Pure LiveView is still the right default for most Phoenix screens. Use
 `liveview_react` when one bounded part of the page needs React itself:
 
 - a React-only component library
-- local interactive state that is awkward in imperative hooks
-- portals, Suspense, transitions, canvas, or WebGL
-- a client-side widget that should still live inside a LiveView page
+- substantial local interaction that would otherwise become imperative hooks
+- Context, portals, Suspense, transitions, canvas, or WebGL
+- a client-side widget that should remain inside a server-owned LiveView page
 
 If React should own the whole page shell, routing, and remote data lifecycle,
 use an SPA or Inertia-style architecture instead.
-
-## Features
-
-- One explicit React root per `<.react>` call
-- React 19 client rendering and SSR support
-- Stable LiveView event bridge with Promise-based replies
-- Phoenix stream support with immutable React props
-- Named and default HEEx slots transported into React
-- Navigation-safe lifecycle cleanup for LiveView replacement
-- First-party hooks for events, navigation, forms, uploads, and connection
-- File-based component registry for PhoenixVite and Vite SSR
 
 ## Install
 
@@ -50,6 +84,12 @@ Useful variants:
 
 In an umbrella, run the installer from the Phoenix child application, not the
 umbrella root.
+
+If `mix igniter.install` is unavailable, install the Igniter archive first with
+`mix archive.install hex igniter_new`. Then run `mix assets.setup` and
+`mix phx.server`; the generated demo is available at `/liveview-react`. See
+[Installation](guides/installation.md) for the complete generated-file and
+asset workflow.
 
 ## First component
 
@@ -99,9 +139,13 @@ Render it from LiveView:
 />
 ```
 
-Handle the event in LiveView:
+Initialize the server state and handle the event in LiveView:
 
 ```elixir
+def mount(_params, _session, socket) do
+  {:ok, assign(socket, count: 0)}
+end
+
 def handle_event("increment", %{"by" => by}, socket)
     when is_integer(by) and by in 1..10 do
   socket = update(socket, :count, &(&1 + by))
@@ -153,6 +197,11 @@ state. Removing the `<.react>` element, changing its `id`, or changing its
 - `useLiveUpload`
 - `Link`
 
+Call bridge commands from effects or event handlers, never during render. The
+low-level commands returned by `useLiveViewReact()` intentionally throw during
+SSR and the hydration render pass; the built-in hooks provide their documented
+post-commit hydration behavior. See [Client hooks](guides/client_hooks.md).
+
 Minimal client entrypoint:
 
 ```tsx
@@ -184,8 +233,8 @@ export const { render } = createLiveViewReactServer({ components });
 
 - Phoenix `stream/3` data can be passed directly as a prop; React receives the
   materialized immutable array, including `__dom_id`.
-- Default and named HEEx slots are transported into React as inert HTML
-  wrappers.
+- The HEEx element body and each `<:slot name="...">` entry are transported
+  into React as inert HTML wrappers.
 - Live navigation keeps cleanup exact and prevents late React mounts after a
   destroyed hook.
 
@@ -197,13 +246,18 @@ These are intentional product constraints, not compatibility gaps:
   If multiple widgets need one provider tree, they belong in one larger root.
 - The outer LiveView element is transport-only. Public wrapper styling options
   are not part of the contract.
-- Slot HTML is not a nested Phoenix runtime. `phx-*`, nested forms,
-  `phx-hook`, nested LiveViews, and nested `liveview_react` roots inside slot
-  content are rejected.
+- Slot HTML uses a fail-closed passive-markup allowlist. Links, form controls,
+  resource-bearing tags, event/style/URL attributes, `phx-*`, `phx-hook`,
+  nested LiveViews, and nested `liveview_react` roots are rejected.
 - A file input must still be rendered by Phoenix with
   `<.live_file_input>` outside the React-owned target. React cannot recreate
   Phoenix upload internals.
 - SSR uses `renderToString`, not React streaming SSR.
+- Production SSR requires a separately built server bundle, the optional
+  `nodejs` dependency and supervisor, and Node.js in the release image. See
+  [Deployment](guides/deployment.md).
+- The 0.1.0 browser support contract is Chromium only. Firefox and WebKit are
+  not claimed until equivalent browser lifecycle lanes run in CI.
 - This library is not a page-wide SPA router and does not make React the owner
   of remote data fetching.
 
@@ -230,14 +284,17 @@ These are intentional product constraints, not compatibility gaps:
 - [Streams](guides/streams.md)
 - [Slots](guides/slots.md)
 - [SSR](guides/ssr.md)
+- [Lazy loading](guides/lazy_loading.md)
 - [Architecture](guides/architecture.md)
 - [Comparison](guides/comparison.md)
 - [Limitations](guides/limitations.md)
+- [Migration from LiveReact](guides/migration_from_live_react.md)
 - [Testing](guides/testing.md)
 - [Development](guides/development.md)
 - [Deployment](guides/deployment.md)
-- [Migration from LiveReact](guides/migration_from_live_react.md)
 - [Uninstallation](guides/uninstallation.md)
+- [Releasing](guides/releasing.md)
+- [Runnable Phoenix example](https://github.com/geonwoo-jeong/liveview_react/tree/main/liveview_react_examples)
 
 ## Development
 
@@ -253,21 +310,25 @@ This repository includes a Phoenix example application under
 `liveview_react_examples` for SSR, lifecycle, stream, slot, and navigation
 verification.
 
+Maintainer-grade verification adds `mix quality_full`, `npm run quality:ci`,
+the artifact-backed fresh-consumer check, and the hosted release dry run. See
+[Testing](guides/testing.md) and [Releasing](guides/releasing.md) before
+publishing.
+
 ## Credits
 
-- [Phoenix LiveView](https://github.com/phoenixframework/phoenix_live_view) for
-  the server-owned UI model, lifecycle semantics, streams, and event runtime
-- [LiveVue](https://github.com/Valian/live_vue) for a modern LiveView frontend
-  bridge reference, especially installer and documentation shape
-- [LiveSvelte](https://github.com/woutdp/live_svelte) for prior art around
-  client-side state inside LiveView, streams, and forms
-- [Phoenix](https://github.com/phoenixframework/phoenix),
-  [Ecto](https://github.com/elixir-ecto/ecto),
-  [Oban](https://github.com/oban-bg/oban), and
-  [Ash](https://github.com/ash-project/ash) for the documentation style
-  baseline common in well-maintained Elixir libraries
-- Historical reference only:
-  [live_react](https://github.com/mrdotb/live_react)
+`liveview_react` was originally forked from
+[live_react](https://github.com/mrdotb/live_react) and has since substantially
+diverged in its runtime architecture, public API, tooling, and documentation.
+
+The project also draws significant inspiration from
+[LiveVue](https://github.com/Valian/live_vue) and
+[LiveSvelte](https://github.com/woutdp/live_svelte), particularly around
+LiveView integration, SSR, streams, slots, and developer experience.
+
+Full upstream provenance and license details are documented in
+[UPSTREAM.md](UPSTREAM.md) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 
