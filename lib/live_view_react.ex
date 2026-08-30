@@ -24,6 +24,9 @@ defmodule LiveViewReact do
   @diff_default true
   @transport_version 2
   @reserved_assigns ~w(id component ssr diff socket __changed__ __given__)a
+  @default_slot_assign :inner_block
+  @named_slot_assign :slot
+  @slot_assigns [@default_slot_assign, @named_slot_assign]
   @unsafe_property_names ~w(__proto__ constructor prototype)
 
   @doc """
@@ -138,7 +141,14 @@ defmodule LiveViewReact do
     {raw_props, _} = extract(assigns, assigns, :props)
     {events, events_changed?} = Events.extract(assigns, raw_props)
     props = Encoder.encode(raw_props, [])
-    props_transport = build_props_transport(props, assigns, connected_snapshot? or not flags.diff)
+
+    props_transport =
+      build_props_transport(
+        props,
+        assigns,
+        connected_snapshot? or not flags.diff or temporary_assign_prop?(assigns, props)
+      )
+
     {all_streams, _} = extract(assigns, assigns, :streams)
 
     streams =
@@ -150,7 +160,6 @@ defmodule LiveViewReact do
       end
 
     {slots, slots_changed?} = extract(assigns, assigns, :slots)
-    slots_changed? = slots_changed? or possible_slot_removal?(assigns)
     rendered_slots = Slots.rendered_slot_map(slots)
     validate_component_prop_collisions!(raw_props, all_streams, events, rendered_slots)
 
@@ -166,6 +175,23 @@ defmodule LiveViewReact do
     |> put_stream_transport(streams, connected_snapshot?)
     |> mark_computed_changed(flags, slots_changed?, events_changed?)
   end
+
+  # A props patch is only valid while LiveView's recorded old value still equals
+  # what the client holds. `temporary_assigns` breaks that precondition by
+  # resetting the assign after every render, so those props always ship a
+  # snapshot instead of a delta computed against a baseline the client never had.
+  defp temporary_assign_prop?(%{socket: %LiveView.Socket{private: private}}, props)
+       when is_map(private) do
+    case Map.get(private, :temporary_assigns) do
+      temporary when is_map(temporary) and map_size(temporary) > 0 ->
+        Enum.any?(Map.keys(props), &Map.has_key?(temporary, &1))
+
+      _none ->
+        false
+    end
+  end
+
+  defp temporary_assign_prop?(_assigns, _props), do: false
 
   defp build_props_transport(props, _assigns, true) do
     %{kind: "snapshot", snapshot: Patch.encode_object(props), patch: ""}
@@ -267,14 +293,9 @@ defmodule LiveViewReact do
     end)
   end
 
-  # LiveView may track a removed default slot as `inner_block: true` instead of
-  # retaining the prior slot entry. `inner_block` is reserved HEEx slot
-  # metadata and was never an ordinary React prop, so it must not produce a
-  # remove operation against the props object.
-  defp removed_prop_diff(_assigns, key, _old_value)
-       when key in [:inner_block, "inner_block"],
-       do: []
-
+  # LiveView may track a removed slot as `true` instead of retaining the prior
+  # slot entry. Both slot assigns are reserved names, so normalize_key/3 still
+  # classifies them as `:slots` and no remove operation reaches the props object.
   defp removed_prop_diff(assigns, key, old_value) do
     current_value = Map.get(assigns, key, old_value)
 
@@ -315,13 +336,21 @@ defmodule LiveViewReact do
     end)
   end
 
+  # HEEx erases the attribute/slot distinction: it hands `react/1` one flat map
+  # in which a named slot hidden by `:if` and an ordinary empty-list prop are
+  # both `[]`. Slot identity therefore comes from the reserved assign names
+  # alone. No branch below may inspect an ordinary prop's value to decide
+  # whether it is "really" a slot: that guess is both unsound (`[]` is
+  # ambiguous) and unsafe (application data may legitimately carry a
+  # `__slot__` key).
+  defp normalize_key(_source, key, _val) when key in @slot_assigns, do: :slots
+
   defp normalize_key(_source, key, _val) when key in @reserved_assigns, do: :special
 
   defp normalize_key(_source, "r-on:" <> _event_name, _value), do: :events
 
   defp normalize_key(source, key, value) do
     cond do
-      slot_assign?(source, key, value) -> :slots
       is_atom(key) -> normalize_key(source, Atom.to_string(key), value)
       match?(%LiveStream{}, value) -> :streams
       true -> :props
@@ -330,33 +359,6 @@ defmodule LiveViewReact do
 
   defp key_changed(%{__changed__: nil}, _key), do: true
   defp key_changed(%{__changed__: changed}, key), do: Map.has_key?(changed, key)
-
-  defp slot_assign?(source, key, value) do
-    slot_value?(value) or changed_from_slot?(source, key)
-  end
-
-  defp slot_value?([%{__slot__: _} | _rest]), do: true
-  defp slot_value?(_value), do: false
-
-  defp changed_from_slot?(%{__changed__: nil}, _key), do: false
-
-  defp changed_from_slot?(%{__changed__: changed}, key) do
-    changed
-    |> Map.get(key)
-    |> slot_value?()
-  end
-
-  # HEEx represents a conditional named slot that became false as an empty
-  # list, which is indistinguishable from an ordinary empty-list prop. If such
-  # an assign changed, refresh the authoritative slot map. Ordinary list props
-  # pay only this small transport cost; stale named slots cannot survive.
-  defp possible_slot_removal?(%{__changed__: nil}), do: false
-
-  defp possible_slot_removal?(%{__changed__: changed} = assigns) do
-    Enum.any?(changed, fn {key, old_value} ->
-      Map.get(assigns, key) == [] or ambiguous_removed_assign?(assigns, key, old_value)
-    end)
-  end
 
   # A `true`/`nil` old value is LiveView's unknown-change sentinel, not enough
   # information to distinguish a removed arbitrary prop from erased named-slot

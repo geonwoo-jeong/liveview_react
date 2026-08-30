@@ -54,14 +54,18 @@ describe("slot bindings", () => {
     ).toThrow(`prop "${slotName === "default" ? "children" : slotName}"`);
   });
 
-  it.each(["children", "Uppercase", "kebab-case", "two words"])(
-    'rejects the invalid or reserved slot name "%s"',
-    (slotName) => {
-      expect(() =>
-        createSlotBindings({ [slotName]: "content" }, {}, "test"),
-      ).toThrow();
-    },
-  );
+  it.each([
+    "children",
+    "constructor",
+    "prototype",
+    "Uppercase",
+    "kebab-case",
+    "two words",
+  ])('rejects the invalid or reserved slot name "%s"', (slotName) => {
+    expect(() =>
+      createSlotBindings({ [slotName]: "content" }, {}, "test"),
+    ).toThrow();
+  });
 
   it.each([
     ["forms", "<form/><form><button>Save</button></form>"],
@@ -70,6 +74,22 @@ describe("slot bindings", () => {
     ["Phoenix-managed bindings", '<div data-phx-component="1"></div>'],
     ["nested React roots", "<div data-react-target></div>"],
     ["nested React roots", '<div data-liveview-react-version="1"></div>'],
+    ["event handler attributes", '<div onclick="alert(1)">Click</div>'],
+    ["event handler attributes", "<DIV ONLOAD='alert(1)'>Load</DIV>"],
+    ["active or resource-bearing markup", "<img>"],
+    ["active or resource-bearing markup", "<script>alert(1)</script>"],
+    ["active or resource-bearing markup", "<iframe></iframe>"],
+    ["active or resource-bearing markup", "<unsafe-widget></unsafe-widget>"],
+    [
+      "style attributes",
+      '<div style="background:url(/tracking.gif)">Styled</div>',
+    ],
+    [
+      "URL-bearing attributes",
+      '<blockquote cite="https://example.test">Quote</blockquote>',
+    ],
+    ["non-inert attribute", "<div contenteditable>Editable</div>"],
+    ["malformed HTML", '<div title="unterminated>'],
   ])("rejects unsupported %s", (reason, html) => {
     expect(() =>
       createSlotBindings({ default: html }, {}, "test slots"),
@@ -97,6 +117,43 @@ describe("slot bindings", () => {
         {},
         "test slots",
       ),
+    ).not.toThrow();
+  });
+
+  it("preserves meaningful leading and trailing whitespace verbatim", () => {
+    const html = " \n<strong>preserved</strong>\t ";
+    const {
+      children: [child],
+    } = createSlotBindings({ default: html }, {}, "test slots");
+
+    expect(renderToStaticMarkup(child)).toBe(
+      '<div data-liveview-react-slot="default"> \n<strong>preserved</strong>\t </div>',
+    );
+  });
+
+  it("omits HTML-whitespace-only slots without treating non-breaking space as empty", () => {
+    const blank = createSlotBindings(
+      { default: " \n\t\f\r", footer: "\t " },
+      {},
+      "test slots",
+    );
+    const meaningful = createSlotBindings(
+      { default: "\u00a0" },
+      {},
+      "test slots",
+    );
+
+    expect(blank.children).toHaveLength(0);
+    expect(blank.props).not.toHaveProperty("footer");
+    expect(meaningful.children).toHaveLength(1);
+  });
+
+  it("allows explicitly inert semantic markup and neutral attributes", () => {
+    const html =
+      '<section id="summary" class="card" role="region" aria-label="Summary" data-testid="summary"><time datetime="2026-08-30">Today</time><blockquote title="1 > 0">Safe</blockquote></section>';
+
+    expect(() =>
+      createSlotBindings({ default: html }, {}, "test slots"),
     ).not.toThrow();
   });
 });

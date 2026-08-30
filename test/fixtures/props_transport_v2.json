@@ -1,0 +1,99 @@
+{
+  "transportVersion": 2,
+  "scenario": {
+    "frames": [
+      {
+        "step": "mount",
+        "propsKind": "snapshot",
+        "props": {
+          "count": 0,
+          "empty": [],
+          "items": [
+            {
+              "id": 1,
+              "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "label": "zero",
+          "user": {
+            "age": 30,
+            "bio": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "name": "John"
+          }
+        },
+        "propsDiff": []
+      },
+      {
+        "step": "increment",
+        "propsKind": "patch",
+        "props": null,
+        "propsDiff": [
+          {
+            "value": 1,
+            "path": "/count",
+            "op": "add"
+          }
+        ]
+      },
+      {
+        "step": "rename",
+        "propsKind": "patch",
+        "props": null,
+        "propsDiff": [
+          {
+            "value": "Jane",
+            "path": "/user/name",
+            "op": "replace"
+          }
+        ]
+      },
+      {
+        "step": "append",
+        "propsKind": "patch",
+        "props": null,
+        "propsDiff": [
+          {
+            "value": {
+              "id": 2,
+              "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "path": "/items/1",
+            "op": "add"
+          }
+        ]
+      },
+      {
+        "step": "rename_twice",
+        "propsKind": "patch",
+        "props": null,
+        "propsDiff": [
+          {
+            "value": "final",
+            "path": "/user/name",
+            "op": "replace"
+          }
+        ]
+      }
+    ],
+    "expectedFinalProps": {
+      "count": 1,
+      "empty": [],
+      "items": [
+        {
+          "id": 1,
+          "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "id": 2,
+          "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "label": "zero",
+      "user": {
+        "name": "final",
+        "age": 30,
+        "bio": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createTestHook,
   encodeProps,
+  expectLifecycleFailure,
   invoke,
   lastRenderedProps,
   renderMock,
@@ -75,7 +76,8 @@ describe("LiveViewReactHook", () => {
     const hook = createTestHook();
     hook.el.querySelectorAll.mockReturnValue([] as never);
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.mounted, hook),
       "requires exactly one direct [data-react-target] child element",
     );
   });
@@ -87,7 +89,8 @@ describe("LiveViewReactHook", () => {
       document.createElement("div"),
     ] as never);
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.mounted, hook),
       "requires exactly one direct [data-react-target] child element",
     );
   });
@@ -106,7 +109,8 @@ describe("LiveViewReactHook", () => {
   it("rejects a root with an empty id", () => {
     const hook = createTestHook({ id: "" });
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.mounted, hook),
       "requires a non-empty element id",
     );
   });
@@ -118,7 +122,8 @@ describe("LiveViewReactHook", () => {
       invoke(liveViewReactHook.mounted, hook);
       hook.el.setAttribute("data-component", "AnotherComponent");
 
-      expect(() => invoke(liveViewReactHook[phase], hook)).toThrow(
+      expectLifecycleFailure(
+        () => invoke(liveViewReactHook[phase], hook),
         "data-component cannot change",
       );
     },
@@ -131,7 +136,8 @@ describe("LiveViewReactHook", () => {
       invoke(liveViewReactHook.mounted, hook);
       hook.el.id = "changed-id";
 
-      expect(() => invoke(liveViewReactHook[phase], hook)).toThrow(
+      expectLifecycleFailure(
+        () => invoke(liveViewReactHook[phase], hook),
         "LiveView root id cannot change",
       );
     },
@@ -163,5 +169,84 @@ describe("LiveViewReactHook", () => {
     invoke(liveViewReactHook.destroyed, hookA);
     expect(rootA.unmount).toHaveBeenCalledTimes(1);
     expect(rootB.unmount).not.toHaveBeenCalled();
+  });
+
+  // LiveView drives every hook's updated() from one loop inside performPatch.
+  // A callback that threw synchronously would abort that loop, so a sibling
+  // root later in the same patch would silently stop receiving updates.
+  it("keeps updating sibling roots when one root fails in the same patch", () => {
+    const renderA = vi.fn();
+    const rootA = { render: renderA, unmount: vi.fn() };
+    const renderB = vi.fn();
+    const rootB = { render: renderB, unmount: vi.fn() };
+    vi.mocked(ReactDOM.createRoot)
+      .mockImplementationOnce(() => rootA)
+      .mockImplementationOnce(() => rootB);
+    const hookA = createTestHook({ id: "root-a" });
+    const hookB = createTestHook({ id: "root-b" });
+
+    invoke(liveViewReactHook.mounted, hookA);
+    invoke(liveViewReactHook.mounted, hookB);
+    renderA.mockClear();
+    renderB.mockClear();
+
+    // Root A's transport becomes unreadable; root B receives a valid update.
+    setAttributes(hookA, { "data-props-kind": "corrupt" });
+    setAttributes(hookB, {
+      "data-props": encodeProps({ title: "B updated" }),
+    });
+
+    const queued: VoidFunction[] = [];
+    const queueMicrotaskSpy = vi
+      .spyOn(globalThis, "queueMicrotask")
+      .mockImplementation((callback: VoidFunction) => {
+        queued.push(callback);
+      });
+
+    try {
+      // Exactly how LiveView iterates: no try/catch around the callbacks.
+      for (const hook of [hookA, hookB]) {
+        invoke(liveViewReactHook.updated, hook);
+      }
+    } finally {
+      queueMicrotaskSpy.mockRestore();
+    }
+
+    // The sibling root was still reached and rendered the new props.
+    expect(renderB).toHaveBeenCalledTimes(1);
+    expect(lastRenderedProps(renderB)).toMatchObject({ title: "B updated" });
+
+    // The failing root was torn down exactly once and never re-rendered.
+    expect(rootA.unmount).toHaveBeenCalledTimes(1);
+    expect(renderA).not.toHaveBeenCalled();
+    expect(rootB.unmount).not.toHaveBeenCalled();
+
+    // The failure is reported exactly once, asynchronously.
+    expect(queued).toHaveLength(1);
+    expect(() => queued[0]?.()).toThrow();
+  });
+
+  it("reports a repeated failure on an already destroyed root only once", () => {
+    const hook = createTestHook();
+    invoke(liveViewReactHook.mounted, hook);
+    setAttributes(hook, { "data-props-kind": "corrupt" });
+
+    const queued: VoidFunction[] = [];
+    const queueMicrotaskSpy = vi
+      .spyOn(globalThis, "queueMicrotask")
+      .mockImplementation((callback: VoidFunction) => {
+        queued.push(callback);
+      });
+
+    try {
+      invoke(liveViewReactHook.updated, hook);
+      invoke(liveViewReactHook.updated, hook);
+      invoke(liveViewReactHook.updated, hook);
+    } finally {
+      queueMicrotaskSpy.mockRestore();
+    }
+
+    expect(rootMock.unmount).toHaveBeenCalledTimes(1);
+    expect(queued).toHaveLength(1);
   });
 });

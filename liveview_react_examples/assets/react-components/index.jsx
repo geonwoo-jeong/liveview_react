@@ -8,6 +8,12 @@ function loadNamed(importer, exportName) {
 }
 
 export default {
+  AllFeatures: {
+    load: loadNamed(() => import("./all-features.tsx"), "AllFeatures"),
+  },
+  SampleFormsUploads: {
+    load: loadNamed(() => import("./all-features.tsx"), "SampleFormsUploads"),
+  },
   Simple: { component: Simple },
   Context: {
     load: loadNamed(() => import("./context"), "Context"),

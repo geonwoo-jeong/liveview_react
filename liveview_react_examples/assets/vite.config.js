@@ -25,7 +25,10 @@ export default defineConfig(({ command, isSsrBuild }) => {
     publicDir: "static",
     plugins: [
       react(),
-      liveViewReact({ entrypoint: "./js/server.js" }),
+      liveViewReact({
+        componentDirectory: "./discovered-components",
+        entrypoint: "./js/server.js",
+      }),
       tailwindcss(),
     ],
     ssr: {

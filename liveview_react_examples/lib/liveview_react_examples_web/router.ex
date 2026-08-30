@@ -14,6 +14,8 @@ defmodule LiveViewReactExamplesWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    live "/sample", LiveAllFeatures
+    live "/sample/destination", LiveSampleDestination
     live "/lazy", LiveLazy
     live "/simple", LiveSimple
     live "/simple-props", LiveSimpleProps

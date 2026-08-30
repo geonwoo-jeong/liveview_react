@@ -81,6 +81,25 @@ function reportAsyncFailure(message: string, error: unknown): void {
   });
 }
 
+/*
+ * LiveView invokes hook callbacks from inside its DOM patch (`performPatch` ->
+ * `afterUpdated`). A callback that throws synchronously aborts the rest of that
+ * patch, so an unrelated root on the same page would silently stop receiving
+ * updates. Failures are therefore reported asynchronously: they still reach
+ * `window.onerror` and the root React error callbacks, but only the failing
+ * root is torn down.
+ */
+function runLifecycleCallback(callbackName: string, run: () => void): void {
+  try {
+    run();
+  } catch (error: unknown) {
+    reportAsyncFailure(
+      `LiveViewReactHook ${callbackName} callback failed`,
+      error,
+    );
+  }
+}
+
 class HookRuntime {
   readonly #componentName: string;
   readonly #components: ComponentRegistry;
@@ -378,44 +397,54 @@ export function createLiveViewReactHook(
 
   return Object.freeze({
     mounted(this: LiveViewHookHost) {
-      if (runtimes.has(this)) {
-        throw new Error("LiveViewReactHook is already mounted on this element");
-      }
+      runLifecycleCallback("mounted", () => {
+        if (runtimes.has(this)) {
+          throw new Error(
+            "LiveViewReactHook is already mounted on this element",
+          );
+        }
 
-      const runtime = new HookRuntime({
-        components,
-        hook: this,
-        rootOptions: immutableRootOptions,
+        const runtime = new HookRuntime({
+          components,
+          hook: this,
+          rootOptions: immutableRootOptions,
+        });
+        runtimes.set(this, runtime);
+
+        try {
+          runtime.mount();
+        } catch (error: unknown) {
+          runtimes.delete(this);
+          runtime.destroy();
+          throw error;
+        }
       });
-      runtimes.set(this, runtime);
-
-      try {
-        runtime.mount();
-      } catch (error: unknown) {
-        runtimes.delete(this);
-        runtime.destroy();
-        throw error;
-      }
     },
 
     updated(this: LiveViewHookHost) {
-      runtimes.get(this)?.update();
+      runLifecycleCallback("updated", () => runtimes.get(this)?.update());
     },
 
     disconnected(this: LiveViewHookHost) {
-      runtimes.get(this)?.disconnect();
+      runLifecycleCallback("disconnected", () =>
+        runtimes.get(this)?.disconnect(),
+      );
     },
 
     reconnected(this: LiveViewHookHost) {
-      runtimes.get(this)?.reconnect();
+      runLifecycleCallback("reconnected", () =>
+        runtimes.get(this)?.reconnect(),
+      );
     },
 
     destroyed(this: LiveViewHookHost) {
-      const runtime = runtimes.get(this);
-      if (!runtime) return;
+      runLifecycleCallback("destroyed", () => {
+        const runtime = runtimes.get(this);
+        if (!runtime) return;
 
-      runtimes.delete(this);
-      runtime.destroy({ navigation: true });
+        runtimes.delete(this);
+        runtime.destroy({ navigation: true });
+      });
     },
   });
 }

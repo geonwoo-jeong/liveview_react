@@ -80,10 +80,10 @@ defmodule LiveViewReact.ClassificationTest do
 
   test "rejects stream and slot prop collisions" do
     users = LiveStream.new("users", make_ref(), [], [])
-    slot = [%{__slot__: :users, inner_block: fn _, _ -> ["slot"] end}]
+    slot = [%{__slot__: :slot, name: "users", inner_block: fn _, _ -> ["slot"] end}]
 
     assert_raise ArgumentError, ~r/colliding React prop "users".*streams and slot props/, fn ->
-      render_direct(%{"users" => users, users: slot})
+      render_direct(%{"users" => users, slot: slot})
     end
   end
 

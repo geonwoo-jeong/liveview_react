@@ -45,6 +45,7 @@ defmodule LiveViewReactExamples.MixProject do
       {:nodejs, "~> 3.1"},
       {:phoenix_live_view, "~> 1.2.11"},
       {:floki, ">= 0.30.0", only: :test},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.1.1",

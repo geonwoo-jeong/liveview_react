@@ -239,7 +239,7 @@ defmodule LiveViewReactTest do
                "identifierPrefix" => "liveview-react-hydrated-component-",
                "props" => %{"greeting" => "hello"},
                "streams" => %{},
-               "slots" => %{"default" => "<em>SSR child</em>"}
+               "slots" => %{"default" => "\n  <em>SSR child</em>\n"}
              }
 
       assert Floki.attribute(wrapper, "data-streams-kind") == ["hydration"]
@@ -439,7 +439,7 @@ defmodule LiveViewReactTest do
     def component_with_named_slot(assigns) do
       ~H"""
       <.react socket={@socket} id="named-slot" component="WithSlots">
-        <:hello>Simple content</:hello>
+        <:slot name="hello">Simple content</:slot>
       </.react>
       """
     end
@@ -447,8 +447,8 @@ defmodule LiveViewReactTest do
     def component_with_repeated_named_slot(assigns) do
       ~H"""
       <.react socket={@socket} id="repeated-named-slot" component="WithSlots">
-        <:hello>First</:hello>
-        <:hello>Second</:hello>
+        <:slot name="hello">First</:slot>
+        <:slot name="hello">Second</:slot>
       </.react>
       """
     end
@@ -489,7 +489,51 @@ defmodule LiveViewReactTest do
       html = render_react(&component_with_inner_block/1)
       react = Test.get_react(html)
 
-      assert react.slots == %{"default" => "Simple content"}
+      assert react.slots == %{"default" => "\n  Simple content\n"}
+    end
+
+    test "preserves meaningful leading and trailing slot whitespace" do
+      slot_html = " \n<strong>preserved</strong>\t "
+
+      html =
+        LiveViewReact.react(%{
+          __changed__: nil,
+          component: "WithSlots",
+          id: "whitespace-slot",
+          inner_block: [
+            %{
+              __slot__: :inner_block,
+              inner_block: fn _, _ -> [Phoenix.HTML.raw(slot_html)] end
+            }
+          ],
+          socket: %Socket{},
+          ssr: false
+        })
+        |> Safe.to_iodata()
+        |> IO.iodata_to_binary()
+
+      assert Test.get_react(html).slots == %{"default" => slot_html}
+    end
+
+    test "omits an HTML-whitespace-only slot without trimming meaningful text" do
+      html =
+        LiveViewReact.react(%{
+          __changed__: nil,
+          component: "WithSlots",
+          id: "blank-slot",
+          inner_block: [
+            %{
+              __slot__: :inner_block,
+              inner_block: fn _, _ -> [Phoenix.HTML.raw(" \n\t\f\r")] end
+            }
+          ],
+          socket: %Socket{},
+          ssr: false
+        })
+        |> Safe.to_iodata()
+        |> IO.iodata_to_binary()
+
+      assert Test.get_react(html).slots == %{}
     end
 
     test "encodes slot as base64" do
@@ -505,7 +549,7 @@ defmodule LiveViewReactTest do
         |> Enum.map(fn {key, value} -> {key, Base.decode64!(value)} end)
         |> Enum.into(%{})
 
-      assert slots == %{"default" => "Simple content"}
+      assert slots == %{"default" => "\n  Simple content\n"}
     end
 
     test "keeps dynamic slot values HTML-escaped before transport" do
@@ -513,7 +557,7 @@ defmodule LiveViewReactTest do
       react = Test.get_react(html)
 
       assert react.slots == %{
-               "default" => "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"
+               "default" => "\n  &lt;img src=x onerror=&quot;alert(1)&quot;&gt;\n"
              }
     end
 
@@ -530,12 +574,31 @@ defmodule LiveViewReactTest do
       assert react.slots == %{}
     end
 
-    test "refreshes slots when HEEx erases conditional slot metadata" do
+    test "an emptied named slot assign transports no slots and no props" do
       html =
         LiveViewReact.react(%{
-          __changed__: %{sidebar: true},
+          __changed__: %{slot: true},
           component: "WithSlots",
           id: "removed-named-slot",
+          slot: [],
+          socket: %Socket{transport_pid: self()},
+          ssr: false
+        })
+        |> Safe.to_iodata()
+        |> IO.iodata_to_binary()
+
+      react = Test.get_react(html)
+
+      assert react.slots == %{}
+      assert react.props_diff == []
+    end
+
+    test "an empty list assign stays an ordinary empty list prop" do
+      html =
+        LiveViewReact.react(%{
+          __changed__: nil,
+          component: "WithSlots",
+          id: "empty-list-prop",
           sidebar: [],
           socket: %Socket{transport_pid: self()},
           ssr: false
@@ -546,12 +609,11 @@ defmodule LiveViewReactTest do
       react = Test.get_react(html)
 
       assert react.slots == %{}
-      assert react.props_kind == "snapshot"
       assert react.props == %{"sidebar" => []}
     end
 
     test "uses a safe snapshot for erased default and named slot metadata" do
-      for slot_key <- [:inner_block, :sidebar] do
+      for slot_key <- [:inner_block, :slot] do
         html =
           LiveViewReact.react(%{
             __changed__: %{slot_key => true},
@@ -575,16 +637,20 @@ defmodule LiveViewReactTest do
 
     test "does not emit a prop removal while updating a current named slot" do
       sidebar = [
-        %{__slot__: :sidebar, inner_block: fn _, _ -> ["Named slot revision 2"] end}
+        %{
+          __slot__: :slot,
+          name: "sidebar",
+          inner_block: fn _, _ -> ["Named slot revision 2"] end
+        }
       ]
 
       html =
         LiveViewReact.react(%{
-          __changed__: %{lastOperation: "initial", sidebar: true},
+          __changed__: %{lastOperation: "initial", slot: true},
           component: "WithSlots",
           id: "updated-sidebar",
           lastOperation: "update_slots",
-          sidebar: sidebar,
+          slot: sidebar,
           socket: %Socket{transport_pid: self()},
           ssr: false,
           title: String.duplicate("unchanged", 16)
@@ -600,7 +666,7 @@ defmodule LiveViewReactTest do
     end
 
     test "rejects prop collisions with named slot props" do
-      slot = [%{__slot__: :hello, inner_block: fn _, _ -> ["slot"] end}]
+      slot = [%{__slot__: :slot, name: "hello", inner_block: fn _, _ -> ["slot"] end}]
 
       assert_raise ArgumentError,
                    ~s(LiveViewReact.react/1 cannot merge colliding React prop "hello" from ordinary props and slot props),
@@ -609,7 +675,7 @@ defmodule LiveViewReactTest do
                        "hello" => "prop",
                        __changed__: nil,
                        component: "WithSlots",
-                       hello: slot,
+                       slot: slot,
                        id: "slot-prop-collision",
                        socket: %Socket{}
                      })
@@ -623,7 +689,7 @@ defmodule LiveViewReactTest do
                      render_react(fn assigns ->
                        ~H"""
                        <.react socket={@socket} id="interactive-slot" component="WithSlots">
-                         <button phx-click="increment">Increment</button>
+                         <div phx-click="increment">Increment</div>
                        </.react>
                        """
                      end)
@@ -658,8 +724,71 @@ defmodule LiveViewReactTest do
       end
     end
 
+    test "rejects trusted raw active markup and scriptable attributes" do
+      unsupported = [
+        {"event handler attributes", ~s|<div onclick="alert(1)">click</div>|},
+        {"event handler attributes", ~s|<DIV ONLOAD='alert(1)'>load</DIV>|},
+        {"active or resource-bearing markup", "<img>"},
+        {"active or resource-bearing markup", ~s|<script>alert(1)</script>|},
+        {"active or resource-bearing markup", "<iframe></iframe>"},
+        {"active or resource-bearing markup", ~s|<unsafe-widget></unsafe-widget>|},
+        {"style attributes", ~s|<div style="background:url(/tracking.gif)">styled</div>|},
+        {"URL-bearing attributes",
+         ~s|<blockquote cite="https://example.test">quote</blockquote>|},
+        {"non-inert attribute", ~s|<div contenteditable>editable</div>|},
+        {"malformed HTML", ~s|<div title="unterminated>|}
+      ]
+
+      for {reason, slot_html} <- unsupported do
+        slot = [
+          %{
+            __slot__: :inner_block,
+            inner_block: fn _, _ -> [Phoenix.HTML.raw(slot_html)] end
+          }
+        ]
+
+        assert_raise ArgumentError, ~r/#{reason}/, fn ->
+          LiveViewReact.react(%{
+            __changed__: nil,
+            component: "WithSlots",
+            id: "unsafe-raw-slot",
+            inner_block: slot,
+            socket: %Socket{}
+          })
+        end
+      end
+    end
+
+    test "allows explicitly inert semantic markup and presentation-neutral attributes" do
+      slot_html =
+        ~s|<section id="summary" class="card" role="region" aria-label="Summary" data-testid="summary"><time datetime="2026-08-30">Today</time><blockquote title="1 > 0">Safe</blockquote></section>|
+
+      slot = [
+        %{
+          __slot__: :inner_block,
+          inner_block: fn _, _ -> [Phoenix.HTML.raw(slot_html)] end
+        }
+      ]
+
+      html =
+        LiveViewReact.react(%{
+          __changed__: nil,
+          component: "WithSlots",
+          id: "inert-raw-slot",
+          inner_block: slot,
+          socket: %Socket{},
+          ssr: false
+        })
+        |> Safe.to_iodata()
+        |> IO.iodata_to_binary()
+
+      assert Test.get_react(html).slots == %{"default" => slot_html}
+    end
+
     test "rejects invalid, reserved, prop-colliding, and event-colliding slot names" do
-      slot = fn name -> [%{__slot__: name, inner_block: fn _, _ -> ["slot"] end}] end
+      slot = fn name ->
+        [%{__slot__: :slot, name: name, inner_block: fn _, _ -> ["slot"] end}]
+      end
 
       for {name, message} <- [
             {"children", ~r/reserves the slot name "children"/},
@@ -667,7 +796,7 @@ defmodule LiveViewReactTest do
           ] do
         assert_raise ArgumentError, message, fn ->
           LiveViewReact.react(%{
-            name => slot.(name),
+            :slot => slot.(name),
             __changed__: nil,
             component: "WithSlots",
             id: "invalid-slot-name",
@@ -681,7 +810,7 @@ defmodule LiveViewReactTest do
                    fn ->
                      LiveViewReact.react(%{
                        "r-on:save-item" => JS.push("save"),
-                       onSaveItem: slot.(:onSaveItem),
+                       slot: slot.("onSaveItem"),
                        __changed__: nil,
                        component: "WithSlots",
                        id: "event-slot-collision",
@@ -702,7 +831,9 @@ defmodule LiveViewReactTest do
 
       react = Test.get_react(html)
 
-      assert react.slots == %{"default" => ~s|text mentioning phx-click="save" without markup|}
+      assert react.slots == %{
+               "default" => "\n  " <> ~s|text mentioning phx-click="save" without markup| <> "\n"
+             }
     end
   end
 

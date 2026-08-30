@@ -18,101 +18,24 @@
       <div class="relative overflow-hidden h-full py-6 pr-6 lg:py-8">
         <div class="h-full w-full rounded-[inherit]">
           <nav>
-            <div class="pb-4">
-              <h4 class="mb-1 rounded-md px-2 py-1 text-sm font-semibold">Basics</h4>
+            <section :for={section <- LiveViewReactExamples.demo_sections()} class="pb-4">
+              <h4 class="mb-1 rounded-md px-2 py-1 text-sm font-semibold">{section.section}</h4>
               <div class="grid grid-flow-row auto-rows-max text-sm">
                 <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/simple"}
+                  :for={demo <- section.demos}
+                  class={[
+                    "group flex w-full items-center rounded-md border px-2 py-1 font-medium transition-colors",
+                    if(@demo == demo.id,
+                      do: "border-zinc-300 bg-zinc-100 text-zinc-950",
+                      else: "border-transparent text-zinc-700 hover:underline"
+                    )
+                  ]}
+                  navigate={demo.path}
                 >
-                  Simple
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/simple-props"}
-                >
-                  Simple Props
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/typescript"}
-                >
-                  TypeScript
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/lazy"}
-                >
-                  Lazy
+                  {demo.title}
                 </.link>
               </div>
-            </div>
-
-            <div>
-              <h4 class="mb-1 rounded-md px-2 py-1 text-sm font-semibold">LiveViews 🔄</h4>
-              <div class="grid grid-flow-row auto-rows-max text-sm">
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/live-counter"}
-                >
-                  Live Counter
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/log-list"}
-                >
-                  Log List
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/flash-sonner"}
-                >
-                  Flash with sonner
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/ssr"}
-                >
-                  SSR
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/hybrid-form"}
-                >
-                  Hybrid Form
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/slot"}
-                >
-                  Slot
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/context"}
-                >
-                  Context
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/link-demo"}
-                >
-                  Link Demo
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/link-usage"}
-                >
-                  Link Usage
-                </.link>
-                <.link
-                  class="group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline font-medium text-zinc-700"
-                  navigate={~p"/stream-demo"}
-                >
-                  Streams
-                </.link>
-              </div>
-            </div>
+            </section>
           </nav>
         </div>
       </div>

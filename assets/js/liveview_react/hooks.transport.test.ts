@@ -4,6 +4,7 @@ import {
   createTestHook,
   encodePatch,
   encodeProps,
+  expectLifecycleFailure,
   invoke,
   lastRenderedProps,
   renderMock,
@@ -84,7 +85,8 @@ describe("LiveViewReactHook", () => {
       "data-props-kind": "patch",
       "data-streams-kind": "invalid",
     });
-    expect(() => invoke(liveViewReactHook.updated, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.updated, hook),
       "data-streams-kind must be",
     );
 
@@ -229,7 +231,8 @@ describe("LiveViewReactHook", () => {
     invoke(liveViewReactHook.mounted, hook);
     setAttributes(hook, { "data-liveview-react-version": "1" });
 
-    expect(() => invoke(liveViewReactHook.updated, hook)).toThrow(
+    expectLifecycleFailure(
+      () => invoke(liveViewReactHook.updated, hook),
       'data-liveview-react-version must be "2"',
     );
     expect(rootMock.unmount).toHaveBeenCalledTimes(1);
@@ -465,7 +468,10 @@ describe("LiveViewReactHook", () => {
     (_label, payload, message) => {
       const hook = createTestHook({ "data-streams-diff": payload });
 
-      expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow(message);
+      expectLifecycleFailure(
+        () => invoke(liveViewReactHook.mounted, hook),
+        message,
+      );
       expect(vi.mocked(ReactDOM.createRoot)).not.toHaveBeenCalled();
     },
   );
@@ -529,6 +535,6 @@ describe("LiveViewReactHook", () => {
     const hook = createTestHook();
     setAttributes(hook, { [attribute]: value });
 
-    expect(() => invoke(liveViewReactHook.mounted, hook)).toThrow();
+    expectLifecycleFailure(() => invoke(liveViewReactHook.mounted, hook));
   });
 });

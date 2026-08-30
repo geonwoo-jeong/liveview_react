@@ -11,6 +11,7 @@ defmodule LiveViewReact.MixProject do
       source_url: @source_url,
       homepage_url: @source_url,
       elixir: "~> 1.20",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :test,
       deps: deps(),
@@ -25,6 +26,9 @@ defmodule LiveViewReact.MixProject do
   def cli do
     [preferred_envs: [quality: :test, quality_full: :test]]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   def application do
     [
@@ -59,6 +63,7 @@ defmodule LiveViewReact.MixProject do
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:stream_data, "~> 1.4", only: :test},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
@@ -76,7 +81,9 @@ defmodule LiveViewReact.MixProject do
     [
       licenses: ["MIT"],
       links: %{
-        "Upstream project" => "https://github.com/mrdotb/live_react"
+        "GitHub" => @source_url,
+        "Documentation" => "https://hexdocs.pm/liveview_react",
+        "npm" => "https://www.npmjs.com/package/liveview_react"
       },
       files:
         ~w(dist guides lib priv/installer)s ++
@@ -90,6 +97,8 @@ defmodule LiveViewReact.MixProject do
       name: "LiveViewReact",
       source_ref: "v#{@version}",
       main: "readme",
+      logo: "guides/images/liveview_react_logo.png",
+      assets: %{"guides/images" => "guides/images"},
       extras: [
         "README.md",
         "guides/installation.md",
