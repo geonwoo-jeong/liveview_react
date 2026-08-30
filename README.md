@@ -316,6 +316,13 @@ publishing.
 
 ## Credits
 
+LiveViewReact began as a fork of
+[LiveReact](https://github.com/mrdotb/live_react) by Baptiste Chaleil
+(Mrdotb). It has since been substantially redesigned and reimplemented as an
+independent project with its own package identity, public API, runtime, and
+transport protocol. The original MIT copyright notice remains for inherited
+portions of the codebase.
+
 The project also draws significant inspiration from
 [LiveVue](https://github.com/Valian/live_vue) and
 [LiveSvelte](https://github.com/woutdp/live_svelte), particularly around
@@ -323,4 +330,5 @@ LiveView integration, SSR, streams, slots, and developer experience.
 
 ## License
 
-[MIT](LICENSE.md)
+Copyright (c) 2026 Geonwoo Jeong. Portions copyright (c) 2024 Mrdotb.
+Released under the [MIT License](LICENSE.md).
