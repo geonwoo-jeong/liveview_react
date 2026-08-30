@@ -94,3 +94,7 @@ Keep the Hex and npm `liveview_react` packages on the same release line. The
 library publication workflow verifies synchronized package versions, while
 each consuming application remains responsible for keeping its own lockfiles
 and release artifacts consistent.
+
+Library maintainers should follow [Releasing](releasing.md) for the local
+artifact dry run, tag contract, protected environment, and two-registry
+publication sequence.

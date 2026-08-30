@@ -61,6 +61,22 @@ it rejects the returned Promise and ignores a later reply; it cannot retract a
 message already sent over the socket. Timeout and unmount use the same stale
 reply protection. A reducer runs only for the latest successful reply.
 
+Cancellation rejects with `LiveEventReplyCancelledError`; a configured timeout
+rejects with `LiveEventReplyTimeoutError`. Both classes are exported from
+`liveview_react`, so application code can distinguish expected lifecycle exits
+without parsing messages:
+
+```tsx
+import { LiveEventReplyCancelledError } from "liveview_react";
+
+try {
+  await search.execute({ query: "react" });
+} catch (error) {
+  if (error instanceof LiveEventReplyCancelledError) return;
+  throw error;
+}
+```
+
 ## `useLiveConnection`
 
 ```tsx
@@ -96,3 +112,7 @@ Exactly one destination is required. Patch and navigate links emit Phoenix's
 declarative link attributes, so LiveView retains ownership of click handling.
 Native modified clicks, `target`, `download`, `rel`, and ordinary `onClick`
 behavior are not reimplemented by the package.
+
+All hooks in this guide are scoped to the owning root. Mounting the same
+provider or hook in two `<.react>` elements creates two independent React
+instances; it does not establish cross-root Context or state.

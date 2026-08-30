@@ -160,3 +160,10 @@ one debounced `changeEvent` containing the full named values, `_target`, and
 The hook owns reconnect recovery, so `formProps` sets
 `phx-auto-recover="ignore"`. Do not add a second LiveView recovery strategy to
 the same form.
+
+`submit()` rejects with `LiveFormSubmitInvalidError` when native constraint
+validation blocks the form. Reset, disconnect, unmount, replacement with a
+different form, or attempting submission before the form ref is mounted rejects
+with `LiveFormSubmitCancelledError`. Both classes are exported from
+`liveview_react`; use `instanceof` when cancellation is expected lifecycle
+control, and handle all other errors normally.

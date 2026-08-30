@@ -67,11 +67,12 @@ the complete state during mount or recovery.
 
 ## Phoenix LiveView contract
 
-`Phoenix.LiveView.LiveStream` is not a public extension API. LiveViewReact
-isolates its use in one internal adapter and currently supports the tuple and
-struct contract shipped by Phoenix LiveView `~> 1.2.11`. Stream keys must match
-`LiveStream.name`; unsupported field or insert-tuple shapes fail immediately
-instead of being guessed.
+Phoenix LiveView's
+[LiveStream struct](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.LiveStream.html)
+is not a public extension API. LiveViewReact isolates its use in one internal
+adapter and currently supports the tuple and struct contract shipped by Phoenix
+LiveView `~> 1.2.11`. Stream keys must match its `name`; unsupported field or
+insert-tuple shapes fail immediately instead of being guessed.
 
 Keep LiveView within the Hex version range declared by `liveview_react`. Run
 the package tests before widening that range for a newer LiveView line.
