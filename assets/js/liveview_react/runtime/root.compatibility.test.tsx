@@ -40,7 +40,7 @@ function createController(
   initialSnapshot: RootRenderSnapshot,
   options: Pick<
     LiveViewReactRootOptions,
-    "onCaughtError" | "onUncaughtError"
+    "onCaughtError" | "onRecoverableError" | "onUncaughtError"
   > = {},
 ) {
   const element = document.createElement("div");
@@ -217,6 +217,40 @@ describe("RootController React compatibility", () => {
         expect.objectContaining({ componentStack: expect.any(String) }),
       );
       expect(onUncaughtError).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => controller.destroy());
+    }
+  });
+
+  it("reports a recoverable hydration mismatch to the React root callback", async () => {
+    const onRecoverableError = vi.fn();
+    const target = document.createElement("div");
+    target.innerHTML = "<p>server content</p>";
+    const element = document.createElement("div");
+    element.id = "compatibility-hydration-root";
+    element.append(target);
+    const initialSnapshot = snapshot({});
+    const controller = new RootController({
+      componentName: "HydrationMismatchProbe",
+      context: createBridgeContext(element),
+      element,
+      executeEventCommands: vi.fn(),
+      hydrate: true,
+      hydrationSnapshot: initialSnapshot,
+      initialSnapshot,
+      onRecoverableError,
+      target,
+    });
+
+    try {
+      await act(async () => controller.mount(() => <p>client content</p>));
+
+      expect(target.textContent).toBe("client content");
+      expect(onRecoverableError).toHaveBeenCalledOnce();
+      expect(onRecoverableError.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+      expect(onRecoverableError.mock.calls[0]?.[1]).toEqual(
+        expect.objectContaining({ componentStack: expect.any(String) }),
+      );
     } finally {
       await act(async () => controller.destroy());
     }

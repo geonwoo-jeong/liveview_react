@@ -358,6 +358,7 @@ test("routes caught and uncaught failures through React root callbacks", async (
     });
 
   const rootErrors = await readRootErrors(page);
+  expect(rootErrors.map(({ kind }) => kind)).toEqual(["caught", "uncaught"]);
   for (const rootError of rootErrors.filter(
     ({ kind }) => kind === "caught" || kind === "uncaught",
   )) {
