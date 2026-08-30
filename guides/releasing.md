@@ -14,8 +14,10 @@ tokens in the repository, shell history, or generated files.
 
 ## Prepare the version
 
-1. Choose a SemVer version and update both `@version` in `mix.exs` and
-   `version` in `package.json` to the exact same value.
+1. Choose a SemVer version and update `@version` in `mix.exs`, `version` in
+   `package.json`, and the `liveview_react` dependency requirement in
+   `lib/live_view_react/installer/package_json.ex`. The first two values must
+   match exactly and the installer must use `^<version>`.
 2. Refresh the npm lockfile through the normal package manager and update
    `CHANGELOG.md` with the public behavior and breaking changes.
 3. Confirm required guides and public module/type documentation describe the
