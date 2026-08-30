@@ -31,4 +31,4 @@ if (!lazyHtml.includes("Loading...")) {
   throw new Error("SSR smoke render did not load the lazy registry entry");
 }
 
-console.log("SSR smoke render passed");
+process.stdout.write("SSR smoke render passed\n");

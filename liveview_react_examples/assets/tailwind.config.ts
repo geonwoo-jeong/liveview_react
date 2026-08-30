@@ -1,11 +1,26 @@
-// See the Tailwind configuration guide for advanced usage
-// https://tailwindcss.com/docs/configuration
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import forms from "@tailwindcss/forms";
+import plugin from "tailwindcss/plugin";
+import type { Config } from "tailwindcss";
 
-const plugin = require("tailwindcss/plugin");
-const fs = require("fs");
-const path = require("path");
+const configDirectory = path.dirname(fileURLToPath(import.meta.url));
+type HeroiconValue = { name: string; fullPath: string };
 
-module.exports = {
+function serializeHeroiconValue(value: HeroiconValue): string {
+  return JSON.stringify(value);
+}
+
+function parseHeroiconValue(value: string): HeroiconValue {
+  const parsed = JSON.parse(value) as Partial<HeroiconValue>;
+  if (typeof parsed.name !== "string" || typeof parsed.fullPath !== "string") {
+    throw new TypeError(`Invalid heroicon payload: ${value}`);
+  }
+  return { name: parsed.name, fullPath: parsed.fullPath };
+}
+
+const config = {
   content: [
     "./js/**/*.ts",
     "./react-components/**/*.tsx",
@@ -59,7 +74,7 @@ module.exports = {
     },
   },
   plugins: [
-    require("@tailwindcss/forms"),
+    forms,
     // Allows prefixing tailwind classes with LiveView classes to add rules
     // only when LiveView classes are applied, for example:
     //
@@ -88,24 +103,31 @@ module.exports = {
     // See your `CoreComponents.icon/1` for more information.
     //
     plugin(function ({ matchComponents, theme }) {
-      let iconsDir = path.join(__dirname, "../deps/heroicons/optimized");
-      let values = {};
-      let icons = [
+      const iconsDir = path.join(
+        configDirectory,
+        "../deps/heroicons/optimized",
+      );
+      const values: Record<string, string> = {};
+      const icons = [
         ["", "/24/outline"],
         ["-solid", "/24/solid"],
         ["-mini", "/20/solid"],
         ["-micro", "/16/solid"],
-      ];
+      ] as const;
       icons.forEach(([suffix, dir]) => {
         fs.readdirSync(path.join(iconsDir, dir)).forEach((file) => {
-          let name = path.basename(file, ".svg") + suffix;
-          values[name] = { name, fullPath: path.join(iconsDir, dir, file) };
+          const name = path.basename(file, ".svg") + suffix;
+          values[name] = serializeHeroiconValue({
+            name,
+            fullPath: path.join(iconsDir, dir, file),
+          });
         });
       });
       matchComponents(
         {
-          hero: ({ name, fullPath }) => {
-            let content = fs
+          hero: (value) => {
+            const { name, fullPath } = parseHeroiconValue(value);
+            const content = fs
               .readFileSync(fullPath)
               .toString()
               .replace(/\r?\n|\r/g, "");
@@ -132,4 +154,6 @@ module.exports = {
       );
     }),
   ],
-};
+} satisfies Config;
+
+export default config;

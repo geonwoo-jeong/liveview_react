@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
-/* using legacy config file */
+/* using a legacy Tailwind config file */
 /* https://tailwindcss.com/docs/upgrade-guide#using-a-javascript-config-file */
-@config "../tailwind.config.cjs";
+@config "../tailwind.config.ts";
 
 @layer base {
   :root {
