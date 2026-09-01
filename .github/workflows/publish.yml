@@ -6,6 +6,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub release tag to validate and publish
+        required: false
+        type: string
 
 permissions: {}
 
@@ -23,18 +28,56 @@ jobs:
       issues: write
       pull-requests: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-      sha: ${{ steps.release.outputs.sha }}
+      release_created: ${{ steps.release.outputs.release_created || steps.recovery.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.recovery.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version || steps.recovery.outputs.version }}
+      sha: ${{ steps.release.outputs.sha || steps.recovery.outputs.sha }}
     steps:
       - name: Run Release Please
         id: release
+        if: github.event_name != 'workflow_dispatch' || inputs.release_tag == ''
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - name: Resolve existing GitHub release
+        id: recovery
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "release recovery must be dispatched from main" >&2
+            exit 1
+          fi
+
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "release_tag must be a v-prefixed semantic version" >&2
+            exit 1
+          fi
+
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          test "$(jq -r '.tag_name' <<<"$release_json")" = "$RELEASE_TAG"
+          test "$(jq -r '.draft' <<<"$release_json")" = "false"
+
+          release_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+          comparison_status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${release_sha}...${GITHUB_SHA}" --jq '.status')"
+          if [[ "$comparison_status" != "ahead" && "$comparison_status" != "identical" ]]; then
+            echo "release tag is not reachable from the selected main commit" >&2
+            exit 1
+          fi
+
+          {
+            echo "release_created=true"
+            echo "tag_name=${RELEASE_TAG}"
+            echo "version=${RELEASE_TAG#v}"
+            echo "sha=${release_sha}"
+          } >> "$GITHUB_OUTPUT"
 
   dry-run:
     name: Package dry run
@@ -69,16 +112,21 @@ jobs:
           cache: npm
 
       - name: Run local release dry-run checks
-        env:
-          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ needs.release-please.outputs.tag_name }}
         run: |
           mix deps.get
           mix quality_full
-          mix docs --warnings-as-errors --output "$RUNNER_TEMP/docs"
-          mix run scripts/check_exdoc_links.exs "$RUNNER_TEMP/docs"
           npm ci
           npm run quality:ci
           mix hex.build --output "$RUNNER_TEMP/liveview_react.tar"
+
+      - name: Build and validate release documentation
+        env:
+          MIX_ENV: dev
+          LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          mix deps.get
+          mix docs --warnings-as-errors --output "$RUNNER_TEMP/docs"
+          mix run scripts/check_exdoc_links.exs "$RUNNER_TEMP/docs"
 
   browser-e2e:
     name: Example build and instrumented browser E2E
@@ -229,5 +277,11 @@ jobs:
         if: steps.registry-state.outputs.hex_exists != 'true'
         env:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        run: mix hex.publish package --yes
+
+      - name: Publish Hex documentation
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+          MIX_ENV: dev
           LIVEVIEW_REACT_DOCS_SOURCE_REF: ${{ needs.release-please.outputs.tag_name }}
-        run: mix hex.publish --yes
+        run: mix hex.publish docs --yes

@@ -9,7 +9,8 @@ validate and publish that exact source to Hex.
 
 Configure these GitHub repository settings before the first release:
 
-- set workflow permissions to read and write
+- keep the default workflow permissions read-only; the release job requests only
+  the write permissions it needs
 - allow GitHub Actions to create and approve pull requests
 - set `LIVEVIEW_REACT_RELEASE_REPOSITORY` to the exact `owner/repository`
 - create the protected `release` environment and store an `api:write` Hex key
@@ -88,12 +89,22 @@ that release PR, the `Release` workflow:
 - checks out the exact tagged commit
 - reruns the package dry run and browser E2E lanes on that tagged source
 - verifies all managed versions, the release tag, and the release commit SHA
-- runs `mix hex.publish --yes` with `HEX_API_KEY` exposed only to that step
+- publishes the package with `mix hex.publish package --yes` when the version
+  does not exist, then publishes documentation with
+  `mix hex.publish docs --yes`
 
-The publish step skips upload when the version is already present on Hex, which
-makes reruns idempotent after a successful publish. If publication fails, fix
-the external problem and use **Re-run failed jobs** on the original workflow
-run; a new manual run will not recreate the already-created release output.
+The package step skips upload when the version is already present on Hex, while
+the documentation step runs on every retry. This also recovers from a package
+upload that succeeded before documentation failed. If an external service
+temporarily fails and the workflow definition does not change, fix the external
+problem and use **Re-run failed jobs** on the original workflow run.
+
+If the GitHub release exists but the workflow itself needs a code change, merge
+the fix and manually run the `Release` workflow with `release_tag` set to the
+existing tag, for example `v1.0.0`. The recovery path resolves the exact public
+release and tag commit, verifies that it is reachable from `main`, and then
+reuses the normal dry-run, browser E2E, metadata checks, and idempotent Hex
+publish job.
 
 After success, verify the version and README on Hex, install it in a fresh
 Phoenix application, run the generated demo, and confirm browser and
